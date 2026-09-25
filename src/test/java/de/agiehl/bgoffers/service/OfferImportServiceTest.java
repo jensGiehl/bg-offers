@@ -83,6 +83,50 @@ class OfferImportServiceTest {
     }
 
     @Test
+    void importsAndEnrichesWithoutNotificationDuringInitialImport() {
+        var repository = mock(OfferRepository.class);
+        var bgg = mock(BggLookupService.class);
+        var comparison = mock(PriceComparisonService.class);
+        var notifier = mock(OfferNotifier.class);
+        var activityLog = mock(ActivityLogService.class);
+        var scraper = mock(OfferScraper.class);
+        var stored = new AtomicReference<Offer>();
+        var scraped = scraped("19.99");
+
+        when(scraper.source()).thenReturn(OfferSource.MILAN);
+        when(scraper.scrape()).thenReturn(List.of(scraped));
+        when(repository.findBySourceAndSourceUrl(OfferSource.MILAN, scraped.sourceUrl()))
+                .thenReturn(Optional.empty());
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
+            var offer = invocation.getArgument(0, Offer.class);
+            stored.set(offer);
+            return offer;
+        });
+        when(bgg.lookup(scraped.name())).thenReturn(
+                new BggResult(LookupStatus.FOUND, 42, new BigDecimal("7.8"), 120, 17));
+        when(comparison.lookup(scraped.name(), 42)).thenReturn(
+                new PriceComparisonResult(
+                        LookupStatus.FOUND,
+                        "https://compare.example/testspiel",
+                        new BigDecimal("24.99"),
+                        new BigDecimal("16.50")));
+        var service = new OfferImportService(
+                List.of(scraper), repository, bgg, comparison, notifier, activityLog,
+                de.agiehl.bgoffers.TestProperties.create(true),
+                new GameNameNormalizer(),
+                Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
+
+        service.importAll();
+
+        verify(bgg).lookup(scraped.name());
+        verify(comparison).lookup(scraped.name(), 42);
+        verify(activityLog).recordOfferFound(any(Offer.class), any(Instant.class));
+        verify(notifier, never()).sendOffer(any(Offer.class));
+        assertThat(stored.get().getNotificationFingerprint()).isNull();
+        assertThat(stored.get().getNotifiedAt()).isNull();
+    }
+
+    @Test
     void retriesTechnicalLookupErrorsBeforeSendingTheNotification() {
         var repository = mock(OfferRepository.class);
         var bgg = mock(BggLookupService.class);

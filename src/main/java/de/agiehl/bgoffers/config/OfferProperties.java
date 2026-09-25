@@ -10,6 +10,7 @@ public record OfferProperties(
         Sources sources,
         Http http,
         Schedule schedule,
+        boolean initialImport,
         Telegram telegram,
         Bgg bgg) {
 

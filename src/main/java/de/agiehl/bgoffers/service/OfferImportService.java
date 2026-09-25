@@ -224,7 +224,7 @@ public class OfferImportService {
     }
 
     private void notifyWhenRelevant(Offer offer, Instant now) {
-        if (!shouldNotify(offer)) {
+        if (properties.initialImport() || !shouldNotify(offer)) {
             return;
         }
         var fingerprint = fingerprint(offer);

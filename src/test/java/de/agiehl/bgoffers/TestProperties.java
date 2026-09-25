@@ -11,6 +11,10 @@ public final class TestProperties {
     }
 
     public static OfferProperties create() {
+        return create(false);
+    }
+
+    public static OfferProperties create(boolean initialImport) {
         return new OfferProperties(
                 new OfferProperties.Sources(
                         URI.create("https://www.spiele-offensive.de/"),
@@ -22,6 +26,7 @@ public final class TestProperties {
                         URI.create("https://www.brettspiel-angebote.de/")),
                 new OfferProperties.Http(Duration.ofSeconds(5), "test", 3, Duration.ZERO, 2),
                 new OfferProperties.Schedule(Duration.ZERO, Duration.ofMinutes(5), "0 0 8 * * *"),
+                initialImport,
                 new OfferProperties.Telegram("", ""),
                 new OfferProperties.Bgg(""));
     }

@@ -19,6 +19,7 @@ server:
   forward-headers-strategy: framework
 
 offers:
+  initial-import: ${INITIAL_IMPORT:false}
   sources:
     spiele-offensive: https://www.spiele-offensive.de/
     spiele-offensive-enabled: ${SPIELE_OFFENSIVE_ENABLED:true}

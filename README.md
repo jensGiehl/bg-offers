@@ -56,6 +56,7 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 
 | Variable | Bedeutung | Standard |
 |---|---|---|
+| `INITIAL_IMPORT` | Importiert und speichert Angebote ohne Benachrichtigungen | `false` |
 | `TELEGRAM_BOT_TOKEN` | Token des Telegram-Bots | leer, Ausgabe auf der Konsole |
 | `TELEGRAM_CHAT_ID` | Ziel-Chat oder Kanal | leer, Ausgabe auf der Konsole |
 | `BGG_API_TOKEN` | API-Token für BoardGameGeek | leer, BGG-Status „Nicht konfiguriert“ |
@@ -72,6 +73,8 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle drei sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen.
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
+
+Mit `INITIAL_IMPORT=true` werden Angebote weiterhin vollständig importiert, angereichert und im Activity Log erfasst, aber nicht gemeldet. Nach dem initialen Befüllen sollte die Variable wieder auf `false` gesetzt werden. Bereits importierte, unveränderte Angebote werden anschließend nicht nachträglich gemeldet; Benachrichtigungen beginnen mit neuen Angeboten oder Preisänderungen.
 
 ## Web-Oberfläche
 
@@ -107,6 +110,7 @@ docker run -d \
   --pull=always \
   -p 8089:8080 \
   -v "$(pwd)/data:/app/data" \
+  -e INITIAL_IMPORT="false" \
   -e BGG_API_TOKEN="BGG_TOKEN" \
   -e TELEGRAM_BOT_TOKEN="BOT_TOKEN" \
   -e TELEGRAM_CHAT_ID="CHAT_ID" \
@@ -123,7 +127,7 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 mvn test
 ```
 
-Die Tests prüfen unter anderem alle drei Quellen, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, Telegram-Nachrichten ohne leere Werte, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
+Die Tests prüfen unter anderem alle drei Quellen, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
 
