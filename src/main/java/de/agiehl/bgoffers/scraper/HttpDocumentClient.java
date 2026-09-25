@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -22,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
@@ -71,6 +73,7 @@ public class HttpDocumentClient implements SessionDocumentClient {
         var formFields = new LinkedHashMap<String, String>();
         loginForm.select("input[type=hidden][name]").forEach(input ->
                 formFields.put(input.attr("name"), input.attr("value")));
+        csrfToken(loginUri).ifPresent(token -> formFields.put("t", token));
         formFields.put("username", username);
         formFields.put("password", password);
 
@@ -91,6 +94,14 @@ public class HttpDocumentClient implements SessionDocumentClient {
         for (var cookie : cookieStore.get(uri)) {
             cookieStore.remove(uri, cookie);
         }
+    }
+
+    private Optional<String> csrfToken(URI uri) {
+        return cookieManager.getCookieStore().get(uri).stream()
+                .filter(cookie -> cookie.getName().equals("XSRF-TOKEN"))
+                .map(cookie -> URLDecoder.decode(
+                        cookie.getValue().replace("+", "%2B"), StandardCharsets.UTF_8))
+                .findFirst();
     }
 
     private Document parseDocument(URI requestedUri, HttpResponse<byte[]> response) {

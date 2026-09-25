@@ -151,10 +151,11 @@ class HttpDocumentClientTest {
                         <form id="login" method="post" action="/login/">
                           <input type="text" name="username">
                           <input type="password" name="password">
-                          <input type="hidden" name="t" value="csrf-token">
+                          <input type="hidden" name="t" value="NOT_MODIFIED">
                         </form>
                         """.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Set-Cookie", "session=anonymous; Path=/; HttpOnly");
+                exchange.getResponseHeaders().add("Set-Cookie", "XSRF-TOKEN=csrf%2Btoken%3D%3D; Path=/");
                 exchange.sendResponseHeaders(200, response.length);
                 exchange.getResponseBody().write(response);
             } else {
@@ -189,7 +190,7 @@ class HttpDocumentClientTest {
             var document = client.fetch(baseUri.resolve("protected/"));
 
             assertThat(postedBody).hasValue(
-                    "t=csrf-token&username=name%40example.org&password=secret+with+%2B");
+                    "t=csrf%2Btoken%3D%3D&username=name%40example.org&password=secret+with+%2B");
             assertThat(loginCookie.get()).contains("session=anonymous");
             assertThat(protectedCookie.get()).contains("session=authenticated");
             assertThat(document.selectFirst("h1").text()).isEqualTo("Geschützt");

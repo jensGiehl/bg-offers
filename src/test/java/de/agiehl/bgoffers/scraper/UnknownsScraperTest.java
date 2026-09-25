@@ -22,12 +22,22 @@ class UnknownsScraperTest {
         var document = Jsoup.parse("""
                 <ol id="thread320208" class="messageGroup wbbThread" data-thread-id="320208">
                   <li class="columnSubject">
-                    <h3><a href="/forum/thread/320208-gutes-angebot/" class="messageGroupLink wbbTopicLink">Gutes Angebot</a></h3>
+                    <h3>
+                      <a href="/forum/thread/320208-gutes-angebot/" class="messageGroupLink wbbTopicLink">Gutes Angebot</a>
+                      <span class="badge messageGroupCounterMobile">
+                        <a href="/forum/thread/320208-gutes-angebot/?action=lastPost">47</a>
+                      </span>
+                    </h3>
                   </li>
                 </ol>
                 <ol id="thread319795" class="messageGroup wbbThread" data-thread-id="319795">
                   <li class="columnSubject">
-                    <h3><a href="/forum/thread/319795-noch-ein-deal/" class="messageGroupLink wbbTopicLink">Noch ein Deal</a></h3>
+                    <h3>
+                      <a href="/forum/thread/319795-noch-ein-deal/" class="messageGroupLink wbbTopicLink">Noch ein Deal</a>
+                      <span class="badge messageGroupCounterMobile">
+                        <a href="/forum/thread/319795-noch-ein-deal/?action=lastPost">3</a>
+                      </span>
+                    </h3>
                   </li>
                 </ol>
                 <a href="/forum/thread/99999-kein-listeneintrag/">Navigation</a>
@@ -66,7 +76,9 @@ class UnknownsScraperTest {
         var properties = TestProperties.create();
         var document = Jsoup.parse("""
                 <ol class="wbbThread" data-thread-id="123">
-                  <li class="columnSubject"><h3><a href="/forum/thread/123-deal/">Deal</a></h3></li>
+                  <li class="columnSubject">
+                    <h3><a class="messageGroupLink wbbTopicLink" href="/forum/thread/123-deal/">Deal</a></h3>
+                  </li>
                 </ol>
                 """, properties.sources().unknowns().toString());
         when(client.fetch(properties.sources().unknowns())).thenReturn(document);

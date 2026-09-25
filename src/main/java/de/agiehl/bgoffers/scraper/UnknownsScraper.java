@@ -19,7 +19,8 @@ import java.util.List;
 public class UnknownsScraper implements OfferScraper {
 
     private static final String THREAD_SELECTOR =
-            "ol.wbbThread[data-thread-id] .columnSubject h3 a[href*=\"/thread/\"]";
+            "ol.wbbThread[data-thread-id] > li.columnSubject h3 "
+                    + "> a.messageGroupLink.wbbTopicLink[href*=\"/forum/thread/\"]";
 
     private final SessionDocumentClient client;
     private final OfferProperties properties;
