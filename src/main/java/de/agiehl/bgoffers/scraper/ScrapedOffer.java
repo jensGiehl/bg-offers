@@ -14,5 +14,31 @@ public record ScrapedOffer(
         BigDecimal price,
         String availability,
         Integer availableQuantity,
-        Integer totalQuantity) {
+        Integer totalQuantity,
+        String sourceOfferId,
+        Integer bggId) {
+
+    public ScrapedOffer(
+            OfferSource source,
+            OfferType type,
+            String name,
+            String sourceUrl,
+            String imageUrl,
+            BigDecimal price,
+            String availability,
+            Integer availableQuantity,
+            Integer totalQuantity) {
+        this(
+                source,
+                type,
+                name,
+                sourceUrl,
+                imageUrl,
+                price,
+                availability,
+                availableQuantity,
+                totalQuantity,
+                null,
+                null);
+    }
 }

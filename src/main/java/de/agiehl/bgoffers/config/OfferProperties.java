@@ -10,6 +10,7 @@ public record OfferProperties(
         Sources sources,
         Http http,
         Schedule schedule,
+        SourceHealth sourceHealth,
         boolean initialImport,
         Telegram telegram,
         Bgg bgg) {
@@ -21,6 +22,7 @@ public record OfferProperties(
             URI unknownsLogin,
             String unknownsUsername,
             String unknownsPassword,
+            URI bggMarket,
             URI priceComparison) {
 
         public boolean unknownsCredentialsConfigured() {
@@ -40,6 +42,13 @@ public record OfferProperties(
     }
 
     public record Schedule(Duration initialDelay, Duration crawlDelay, String healthCron) {
+    }
+
+    public record SourceHealth(
+            Duration spieleOffensiveMaxSilence,
+            Duration milanMaxSilence,
+            Duration bggMarketMaxSilence,
+            Duration unknownsMaxSilence) {
     }
 
     public record Telegram(String botToken, String chatId) {

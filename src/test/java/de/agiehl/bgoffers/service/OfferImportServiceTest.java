@@ -266,6 +266,101 @@ class OfferImportServiceTest {
         assertThat(stored.get().getComparisonStatus()).isEqualTo(LookupStatus.SKIPPED);
     }
 
+    @Test
+    void identifiesBggMarketOffersByProductIdAndUsesTheKnownBggId() {
+        var repository = mock(OfferRepository.class);
+        var bgg = mock(BggLookupService.class);
+        var comparison = mock(PriceComparisonService.class);
+        var notifier = mock(OfferNotifier.class);
+        var activityLog = mock(ActivityLogService.class);
+        var scraper = mock(OfferScraper.class);
+        var scraped = bggMarketOffer("4147596", "30.00");
+        var stored = new AtomicReference<Offer>();
+
+        when(scraper.source()).thenReturn(OfferSource.BGG_MARKET);
+        when(scraper.scrape()).thenReturn(List.of(scraped));
+        when(repository.findBySourceAndSourceOfferId(OfferSource.BGG_MARKET, "4147596"))
+                .thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
+            var saved = invocation.getArgument(0, Offer.class);
+            stored.set(saved);
+            return saved;
+        });
+        when(bgg.lookupById(350458)).thenReturn(
+                new BggResult(LookupStatus.FOUND, 350458, new BigDecimal("7.40"), 12, 3));
+        when(comparison.lookup(scraped.name(), 350458)).thenReturn(
+                new PriceComparisonResult(
+                        LookupStatus.FOUND,
+                        "https://www.brettspiel-angebote.de/testspiel",
+                        new BigDecimal("34.99"),
+                        new BigDecimal("29.99")));
+        when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
+        var service = new OfferImportService(
+                List.of(scraper), repository, bgg, comparison, notifier, activityLog,
+                de.agiehl.bgoffers.TestProperties.create(),
+                new GameNameNormalizer(),
+                Clock.fixed(Instant.parse("2026-09-25T10:00:00Z"), ZoneOffset.UTC));
+
+        service.importAll();
+        service.importAll();
+
+        verify(repository, times(2)).findBySourceAndSourceOfferId(OfferSource.BGG_MARKET, "4147596");
+        verify(repository, never()).findBySourceAndSourceUrl(OfferSource.BGG_MARKET, scraped.sourceUrl());
+        verify(bgg).lookupById(350458);
+        verify(comparison).lookup(scraped.name(), 350458);
+        verify(notifier).sendOffer(any(Offer.class));
+        assertThat(stored.get().getSourceOfferId()).isEqualTo("4147596");
+        assertThat(stored.get().getBggId()).isEqualTo(350458);
+    }
+
+    @Test
+    void doesNotNotifyForABggMarketOfferThatIsNotCheaperThanTheComparison() {
+        var repository = mock(OfferRepository.class);
+        var bgg = mock(BggLookupService.class);
+        var comparison = mock(PriceComparisonService.class);
+        var notifier = mock(OfferNotifier.class);
+        var activityLog = mock(ActivityLogService.class);
+        var scraper = mock(OfferScraper.class);
+        var scraped = bggMarketOffer("4147596", "30.00");
+
+        when(scraper.source()).thenReturn(OfferSource.BGG_MARKET);
+        when(scraper.scrape()).thenReturn(List.of(scraped));
+        when(repository.findBySourceAndSourceOfferId(OfferSource.BGG_MARKET, "4147596"))
+                .thenReturn(Optional.empty());
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bgg.lookupById(350458)).thenReturn(BggResult.withStatus(LookupStatus.NOT_CONFIGURED, 350458));
+        when(comparison.lookup(scraped.name(), 350458)).thenReturn(
+                new PriceComparisonResult(
+                        LookupStatus.FOUND,
+                        "https://www.brettspiel-angebote.de/testspiel",
+                        new BigDecimal("29.99"),
+                        new BigDecimal("25.00")));
+        var service = new OfferImportService(
+                List.of(scraper), repository, bgg, comparison, notifier, activityLog,
+                de.agiehl.bgoffers.TestProperties.create(),
+                new GameNameNormalizer(),
+                Clock.fixed(Instant.parse("2026-09-25T10:00:00Z"), ZoneOffset.UTC));
+
+        service.importAll();
+
+        verify(notifier, never()).sendOffer(any(Offer.class));
+    }
+
+    private ScrapedOffer bggMarketOffer(String productId, String price) {
+        return new ScrapedOffer(
+                OfferSource.BGG_MARKET,
+                OfferType.STANDARD,
+                "Terrakotta-Armee (German edition)",
+                "https://boardgamegeek.com/market/product/" + productId,
+                "https://cf.geekdo-images.com/terrakotta.jpg",
+                new BigDecimal(price),
+                null,
+                null,
+                null,
+                productId,
+                350458);
+    }
+
     private ScrapedOffer scraped(String price) {
         return new ScrapedOffer(
                 OfferSource.MILAN,

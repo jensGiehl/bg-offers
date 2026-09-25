@@ -18,7 +18,12 @@ import java.time.Instant;
 @Entity
 @Table(
         name = "offers",
-        uniqueConstraints = @UniqueConstraint(name = "uk_offer_source_url", columnNames = {"source", "source_url"}),
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_offer_source_url", columnNames = {"source", "source_url"}),
+                @UniqueConstraint(
+                        name = "uk_offer_source_offer_id",
+                        columnNames = {"source", "source_offer_id"})
+        },
         indexes = {
                 @Index(name = "idx_offer_last_seen", columnList = "last_seen_at"),
                 @Index(name = "idx_offer_last_changed", columnList = "last_changed_at"),
@@ -47,6 +52,9 @@ public class Offer {
 
     @Column(name = "source_url", nullable = false, length = 1500)
     private String sourceUrl;
+
+    @Column(name = "source_offer_id", length = 128)
+    private String sourceOfferId;
 
     @Column(length = 2000)
     private String imageUrl;
@@ -140,6 +148,14 @@ public class Offer {
 
     public String getSourceUrl() {
         return sourceUrl;
+    }
+
+    public String getSourceOfferId() {
+        return sourceOfferId;
+    }
+
+    public void setSourceOfferId(String sourceOfferId) {
+        this.sourceOfferId = sourceOfferId;
     }
 
     public String getImageUrl() {

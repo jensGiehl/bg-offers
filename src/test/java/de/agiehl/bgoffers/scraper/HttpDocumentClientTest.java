@@ -209,6 +209,7 @@ class HttpDocumentClientTest {
                 defaults.sources(),
                 new OfferProperties.Http(Duration.ofSeconds(2), "test", maxAttempts, Duration.ZERO, 1),
                 defaults.schedule(),
+                defaults.sourceHealth(),
                 defaults.initialImport(),
                 defaults.telegram(),
                 defaults.bgg());

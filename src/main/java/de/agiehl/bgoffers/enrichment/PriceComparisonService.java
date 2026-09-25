@@ -49,7 +49,7 @@ public class PriceComparisonService {
     }
 
     public PriceComparisonResult lookup(String gameName, Integer bggId) {
-        if (normalizer.isBundle(gameName)) {
+        if (bggId == null && normalizer.isBundle(gameName)) {
             return PriceComparisonResult.withStatus(LookupStatus.SKIPPED);
         }
         try {

@@ -1,8 +1,8 @@
 # BG Offers
 
-BG Offers sammelt Brettspielangebote von Spiele-Offensive und Milan-Spiele sowie neue Themen aus dem Schnäppchenforum von unknowns.de. Shopangebote werden mit BoardGameGeek- und Vergleichspreisdaten angereichert; unknowns.de-Themen werden ausschließlich mit Titel und Link gespeichert und gemeldet. Ein dauerhaftes Activity Log macht diese Abläufe auch in der Web-Oberfläche nachvollziehbar. Ohne Telegram-Konfiguration werden dieselben Meldungen im Anwendungslog ausgegeben.
+BG Offers sammelt Brettspielangebote von Spiele-Offensive, Milan-Spiele und dem BGG Market sowie neue Themen aus dem Schnäppchenforum von unknowns.de. Shop- und Market-Angebote werden mit BoardGameGeek- und Vergleichspreisdaten angereichert; unknowns.de-Themen werden ausschließlich mit Titel und Link gespeichert und gemeldet. Ein dauerhaftes Activity Log macht diese Abläufe auch in der Web-Oberfläche nachvollziehbar. Ohne Telegram-Konfiguration werden dieselben Meldungen im Anwendungslog ausgegeben.
 
-Die Anwendung verwendet Java 25, Spring Boot, Maven, H2, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
+Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
 
 ## Funktionsumfang
 
@@ -13,6 +13,9 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2, Jsoup, Thymeleaf und Bo
 - Behandelt Spieleschmiede-Banner ohne BGG- und Preisvergleich und versendet bei konfiguriertem Telegram nur das Bild.
 - Ignoriert Inspirations-TV.
 - Liest alle Angebotsseiten von Milan-Spiele ein und lädt das große Produktbild von jeder Detailseite. Temporäre HTTP-Fehler werden automatisch erneut versucht; die Detailabrufe sind gedrosselt.
+- Liest die neuesten in Deutschland angebotenen Neuware-Artikel aus dem BGG Market ein und speichert sie eindeutig über deren `productid`.
+- Übernimmt für BGG-Market-Angebote `version.name`, Preis und Produktlink und verwendet `objectid` direkt für BoardGameGeek und den Preisvergleich. Fehlt bei einem Angebot die Version, dient `objectlink.name` als Namens-Fallback.
+- Meldet BGG-Market-Angebote ausschließlich, wenn ihr Preis unter dem aktuell verfügbaren Preis bei brettspiel-angebote.de liegt.
 - Prüft das Schnäppchenforum von unknowns.de auf neue Themen und speichert beziehungsweise meldet dafür nur Titel und Link. BoardGameGeek und brettspiel-angebote.de werden für diese Einträge nicht aufgerufen.
 - Speichert Angebote, Zeitpunkte, BGG-Werte, Vergleichspreise und den Benachrichtigungsstatus dauerhaft in H2.
 - Bereinigt Suchbegriffe für BoardGameGeek und brettspiel-angebote.de: führende und folgende Leerzeichen, Klammerzusätze mit Wörtern sowie die Begriffe „Stapelspiel“, „Würfelspiel“ und „Jubiläumsausgabe“ werden entfernt.
@@ -25,8 +28,10 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2, Jsoup, Thymeleaf und Bo
 - Meldet neue oder preislich veränderte Angebote, wenn sie günstiger als ein aktuell verfügbares Vergleichsangebot sind oder eine der Zusatzquellen keinen Treffer liefert.
 - Verhindert mit einem Fingerabdruck aus Quelle, URL und Preis doppelte Meldungen.
 - Aktualisiert alle Quellen alle fünf Minuten.
+- Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
 - Verwendet die Schnellsuche von brettspiel-angebote.de und verkürzt unbekannte Editionsnamen schrittweise, ohne eine abweichende Edition als Treffer zu übernehmen.
 - Prüft täglich um 08:00 Uhr Europe/Berlin mit „Scythe“, ob brettspiel-angebote.de weiterhin auswertbar ist.
+- Prüft im selben täglichen Lauf mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können.
 
 ## Voraussetzungen
 
@@ -48,7 +53,7 @@ Alternativ:
 mvn spring-boot:run
 ```
 
-Der erste Abruf beginnt 15 Sekunden nach dem Start. Die H2-Dateien werden standardmäßig im Verzeichnis `./data` abgelegt. Die Datenbank wird beim ersten Start automatisch erstellt und bei späteren Starts weiterverwendet.
+Der erste Abruf beginnt 15 Sekunden nach dem Start. Die H2-Dateien werden standardmäßig im Verzeichnis `./data` abgelegt. Flyway erstellt das Datenbankschema beim ersten Start und führt ausstehende Migrationen aus `src/main/resources/db/migration` automatisch aus. Eine bereits von einer älteren Version angelegte Datenbank wird beim ersten Start mit Flyway als Version 1 registriert und unverändert weiterverwendet. Hibernate validiert das migrierte Schema beim Start, nimmt aber selbst keine Schemaänderungen mehr vor.
 
 ## Konfiguration
 
@@ -62,7 +67,12 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | `BGG_API_TOKEN` | API-Token für BoardGameGeek | leer, BGG-Status „Nicht konfiguriert“ |
 | `SPIELE_OFFENSIVE_ENABLED` | Abruf von Spiele-Offensive aktivieren | `true` |
 | `MILAN_ENABLED` | Abruf von Milan-Spiele aktivieren | `true` |
+| `BGG_MARKET_ENABLED` | Abruf des BGG Market aktivieren | `true` |
 | `UNKNOWNS_ENABLED` | Abruf des unknowns.de-Schnäppchenforums aktivieren | `true` |
+| `SPIELE_OFFENSIVE_MAX_SILENCE` | Zeit ohne neue Spiele-Offensive-Daten bis zur Warnung | `4d` |
+| `MILAN_MAX_SILENCE` | Zeit ohne neue Milan-Daten bis zur Warnung | `4d` |
+| `BGG_MARKET_MAX_SILENCE` | Zeit ohne neue BGG-Market-Daten bis zur Warnung | `4d` |
+| `UNKNOWNS_MAX_SILENCE` | Zeit ohne neue unknowns.de-Daten bis zur Warnung | `30d` |
 | `UNKNOWNS_USERNAME` | Benutzername oder E-Mail-Adresse für unknowns.de | leer |
 | `UNKNOWNS_PASSWORD` | Passwort für unknowns.de | leer |
 | `DB_PATH` | Pfad der H2-Datenbank ohne Dateiendung | `./data/bg-offers` |
@@ -70,7 +80,7 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | `DB_PASSWORD` | H2-Passwort | leer |
 | `SERVER_PORT` | HTTP-Port der Anwendung | `8080` |
 
-Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle drei sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen.
+Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen.
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
 
@@ -92,6 +102,8 @@ Normale Meldungen enthalten kompakt Name, Angebotspreis, Verfügbarkeit, verfüg
 
 Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche werden deshalb beim nächsten relevanten Lauf erneut versucht. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung.
 
+Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
+
 ## Docker
 
 Das Image wird einschließlich Tests gebaut:
@@ -111,6 +123,7 @@ docker run -d \
   -p 8089:8080 \
   -v "$(pwd)/data:/app/data" \
   -e INITIAL_IMPORT="false" \
+  -e BGG_MARKET_ENABLED="true" \
   -e BGG_API_TOKEN="BGG_TOKEN" \
   -e TELEGRAM_BOT_TOKEN="BOT_TOKEN" \
   -e TELEGRAM_CHAT_ID="CHAT_ID" \
@@ -127,8 +140,8 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 mvn test
 ```
 
-Die Tests prüfen unter anderem alle drei Quellen, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
+Die Tests prüfen unter anderem alle vier Quellen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
 
-Die Anwendung wertet HTML-Seiten und die öffentlich von der Seitensuche verwendete JSON-Antwort aus. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können einzelne Abrufe fehlschlagen. Solche Fehler werden protokolliert; für brettspiel-angebote.de gibt es zusätzlich die tägliche „Scythe“-Prüfung mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.
+Die Anwendung wertet HTML-Seiten und die öffentlich von der Seitensuche verwendete JSON-Antwort aus. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können einzelne Abrufe fehlschlagen. Solche Fehler werden protokolliert; für brettspiel-angebote.de und BoardGameGeek gibt es zusätzlich tägliche Prüfungen mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.

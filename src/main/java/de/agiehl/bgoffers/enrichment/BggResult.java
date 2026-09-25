@@ -14,4 +14,8 @@ public record BggResult(
     public static BggResult withStatus(LookupStatus status) {
         return new BggResult(status, null, null, null, null);
     }
+
+    public static BggResult withStatus(LookupStatus status, Integer id) {
+        return new BggResult(status, id, null, null, null);
+    }
 }

@@ -9,8 +9,11 @@ spring:
     password: ${DB_PASSWORD:}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
   thymeleaf:
     cache: true
 
@@ -30,6 +33,8 @@ offers:
     unknowns-enabled: ${UNKNOWNS_ENABLED:true}
     unknowns-username: ${UNKNOWNS_USERNAME:}
     unknowns-password: ${UNKNOWNS_PASSWORD:}
+    bgg-market: "https://api.geekdo.com/api/market/products?ajax=1&browsetype=browse&colluserid=0&condition=new&country=DE&currency=eur&displaymode=gallery&findmywants=0&inventorytype=any&marketdomain=boardgame&nosession=1&objectid=0&objecttype=thing&pageid=1&productstate=active&shiparea=any&sort=recent&stock=instock&userid=0"
+    bgg-market-enabled: ${BGG_MARKET_ENABLED:true}
     price-comparison: https://www.brettspiel-angebote.de/
   http:
     timeout: 30s
@@ -41,6 +46,11 @@ offers:
     initial-delay: 15s
     crawl-delay: 5m
     health-cron: "0 0 8 * * *"
+  source-health:
+    spiele-offensive-max-silence: ${SPIELE_OFFENSIVE_MAX_SILENCE:4d}
+    milan-max-silence: ${MILAN_MAX_SILENCE:4d}
+    bgg-market-max-silence: ${BGG_MARKET_MAX_SILENCE:4d}
+    unknowns-max-silence: ${UNKNOWNS_MAX_SILENCE:30d}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     chat-id: ${TELEGRAM_CHAT_ID:}

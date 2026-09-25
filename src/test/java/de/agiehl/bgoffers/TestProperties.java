@@ -23,9 +23,15 @@ public final class TestProperties {
                         URI.create("https://unknowns.de/login/"),
                         "test-user",
                         "test-password",
+                        URI.create("https://api.geekdo.com/api/market/products?pageid=1"),
                         URI.create("https://www.brettspiel-angebote.de/")),
                 new OfferProperties.Http(Duration.ofSeconds(5), "test", 3, Duration.ZERO, 2),
                 new OfferProperties.Schedule(Duration.ZERO, Duration.ofMinutes(5), "0 0 8 * * *"),
+                new OfferProperties.SourceHealth(
+                        Duration.ofDays(4),
+                        Duration.ofDays(4),
+                        Duration.ofDays(4),
+                        Duration.ofDays(30)),
                 initialImport,
                 new OfferProperties.Telegram("", ""),
                 new OfferProperties.Bgg(""));

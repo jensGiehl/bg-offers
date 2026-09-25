@@ -78,6 +78,7 @@ public class OfferController {
         model.addAttribute("total", repository.count());
         model.addAttribute("spieleOffensiveCount", repository.countBySource(OfferSource.SPIELE_OFFENSIVE));
         model.addAttribute("milanCount", repository.countBySource(OfferSource.MILAN));
+        model.addAttribute("bggMarketCount", repository.countBySource(OfferSource.BGG_MARKET));
         model.addAttribute("unknownsCount", repository.countBySource(OfferSource.UNKNOWNS));
         return "index";
     }

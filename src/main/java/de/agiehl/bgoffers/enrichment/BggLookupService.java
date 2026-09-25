@@ -25,6 +25,7 @@ public class BggLookupService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BggLookupService.class);
     private static final double MINIMUM_MATCH = 0.55;
+    private static final String HEALTH_CHECK_GAME = "Magical Athlete";
 
     private final OfferProperties properties;
     private final GameNameNormalizer normalizer;
@@ -55,25 +56,45 @@ public class BggLookupService {
             if (match == null) {
                 return BggResult.withStatus(LookupStatus.NOT_FOUND);
             }
-            var thingResponse = client.things().fetch(ThingRequest.builder()
-                    .id(match.getId())
-                    .stats(true)
-                    .build());
-            var thing = firstThing(thingResponse.getItems());
-            if (thing == null || thing.getStatistics() == null || thing.getStatistics().getRatings() == null) {
-                return BggResult.withStatus(LookupStatus.NOT_FOUND);
-            }
-            var ratings = thing.getStatistics().getRatings();
-            return new BggResult(
-                    LookupStatus.FOUND,
-                    thing.getId(),
-                    decimalValue(ratings.getAverage()),
-                    intValue(ratings.getWanting()),
-                    intValue(ratings.getTrading()));
+            return loadThing(client, match.getId());
         } catch (RuntimeException exception) {
             LOGGER.warn("BGG-Abfrage für {} ist fehlgeschlagen: {}", gameName, exception.getMessage());
             return BggResult.withStatus(LookupStatus.ERROR);
         }
+    }
+
+    public BggResult lookupById(int bggId) {
+        if (!properties.bgg().configured()) {
+            return BggResult.withStatus(LookupStatus.NOT_CONFIGURED, bggId);
+        }
+        try {
+            return loadThing(BggClient.of(properties.bgg().apiToken()), bggId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("BGG-Abfrage für ID {} ist fehlgeschlagen: {}", bggId, exception.getMessage());
+            return BggResult.withStatus(LookupStatus.ERROR, bggId);
+        }
+    }
+
+    public boolean healthCheck() {
+        return lookup(HEALTH_CHECK_GAME).status() == LookupStatus.FOUND;
+    }
+
+    private BggResult loadThing(BggClient client, int bggId) {
+        var thingResponse = client.things().fetch(ThingRequest.builder()
+                .id(bggId)
+                .stats(true)
+                .build());
+        var thing = firstThing(thingResponse.getItems());
+        if (thing == null || thing.getStatistics() == null || thing.getStatistics().getRatings() == null) {
+            return BggResult.withStatus(LookupStatus.NOT_FOUND, bggId);
+        }
+        var ratings = thing.getStatistics().getRatings();
+        return new BggResult(
+                LookupStatus.FOUND,
+                thing.getId(),
+                decimalValue(ratings.getAverage()),
+                intValue(ratings.getWanting()),
+                intValue(ratings.getTrading()));
     }
 
     private SearchItem bestMatch(String gameName, List<SearchItem> items) {

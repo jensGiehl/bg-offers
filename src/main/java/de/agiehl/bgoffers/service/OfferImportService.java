@@ -2,6 +2,7 @@ package de.agiehl.bgoffers.service;
 
 import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.domain.Offer;
+import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.enrichment.BggLookupService;
 import de.agiehl.bgoffers.enrichment.BggResult;
@@ -27,6 +28,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -114,7 +116,7 @@ public class OfferImportService {
 
     private void importOffer(ScrapedOffer scraped) {
         var now = Instant.now(clock);
-        var existing = repository.findBySourceAndSourceUrl(scraped.source(), scraped.sourceUrl());
+        var existing = findExisting(scraped);
         var offer = existing.orElseGet(() -> Offer.create(
                 scraped.source(), scraped.type(), scraped.name(), scraped.sourceUrl(), now));
         var newOffer = existing.isEmpty();
@@ -122,11 +124,15 @@ public class OfferImportService {
         var changedPrice = newOffer || !samePrice(previousPrice, scraped.price());
 
         offer.setName(scraped.name());
+        offer.setSourceOfferId(scraped.sourceOfferId());
         offer.setImageUrl(scraped.imageUrl());
         offer.setPrice(scraped.price());
         offer.setAvailability(scraped.availability());
         offer.setAvailableQuantity(scraped.availableQuantity());
         offer.setTotalQuantity(scraped.totalQuantity());
+        if (scraped.bggId() != null) {
+            offer.setBggId(scraped.bggId());
+        }
         offer.setLastSeenAt(now);
         if (changedPrice) {
             offer.setLastChangedAt(now);
@@ -138,10 +144,10 @@ public class OfferImportService {
         }
         if (offer.getType() == OfferType.SPIELESCHMIEDE
                 || offer.getType() == OfferType.FORUM_POST
-                || normalizer.isBundle(offer.getName())) {
+                || (offer.getSource() != OfferSource.BGG_MARKET && normalizer.isBundle(offer.getName()))) {
             skipEnrichment(offer, now);
         } else {
-            enrich(offer, now);
+            enrich(offer, scraped.bggId(), now);
         }
         offer = repository.save(offer);
         if (newOffer) {
@@ -152,8 +158,8 @@ public class OfferImportService {
         notifyWhenRelevant(offer, now);
     }
 
-    private void enrich(Offer offer, Instant now) {
-        var bgg = lookupBggWithRetries(offer);
+    private void enrich(Offer offer, Integer knownBggId, Instant now) {
+        var bgg = lookupBggWithRetries(offer, knownBggId);
         applyBggResult(offer, bgg);
 
         var comparison = lookupComparisonWithRetries(offer, bgg.id());
@@ -161,11 +167,13 @@ public class OfferImportService {
         offer.setEnrichedAt(now);
     }
 
-    private BggResult lookupBggWithRetries(Offer offer) {
+    private BggResult lookupBggWithRetries(Offer offer, Integer knownBggId) {
         var result = BggResult.withStatus(LookupStatus.ERROR);
         var maximumAttempts = Math.max(1, properties.http().maxAttempts());
         for (var attempt = 1; attempt <= maximumAttempts; attempt++) {
-            result = bggLookupService.lookup(offer.getName());
+            result = knownBggId == null
+                    ? bggLookupService.lookup(offer.getName())
+                    : bggLookupService.lookupById(knownBggId);
             applyBggResult(offer, result);
             if (result.status() != LookupStatus.ERROR || attempt == maximumAttempts) {
                 return result;
@@ -247,7 +255,17 @@ public class OfferImportService {
         var betterThanComparison = offer.getPrice() != null
                 && offer.getComparisonAvailablePrice() != null
                 && offer.getPrice().compareTo(offer.getComparisonAvailablePrice()) < 0;
+        if (offer.getSource() == OfferSource.BGG_MARKET) {
+            return betterThanComparison;
+        }
         return lookupMissing || betterThanComparison;
+    }
+
+    private Optional<Offer> findExisting(ScrapedOffer scraped) {
+        if (scraped.sourceOfferId() != null && !scraped.sourceOfferId().isBlank()) {
+            return repository.findBySourceAndSourceOfferId(scraped.source(), scraped.sourceOfferId());
+        }
+        return repository.findBySourceAndSourceUrl(scraped.source(), scraped.sourceUrl());
     }
 
     private boolean samePrice(BigDecimal left, BigDecimal right) {

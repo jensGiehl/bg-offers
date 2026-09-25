@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Gesammelte Brettspielangebote und neue Schnäppchenbeiträge von unknowns.de">
+    <meta name="description" content="Gesammelte Brettspielangebote aus Shops, BGG Market und dem Schnäppchenforum von unknowns.de">
     <title>BG Offers</title>
     <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
     <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
@@ -19,23 +19,26 @@
                 <h1 class="display-6 fw-bold mb-0">Angebote im Blick</h1>
             </div>
         </div>
-        <p class="lead text-secondary mb-4">Automatisch gesammelt, mit BGG angereichert und um neue unknowns.de-Schnäppchenbeiträge ergänzt.</p>
+        <p class="lead text-secondary mb-4">Automatisch gesammelt, mit Vergleichspreisen angereichert und um BGG-Market-Angebote sowie unknowns.de-Schnäppchenbeiträge ergänzt.</p>
         <nav class="view-switch d-inline-flex mb-4" aria-label="Hauptnavigation">
             <a class="active" href="/" aria-current="page"><i class="bi bi-grid" aria-hidden="true"></i> Angebote</a>
             <a href="/aktivitaeten"><i class="bi bi-clock-history" aria-hidden="true"></i> Aktivitäten</a>
             <a href="/fehlende-treffer"><i class="bi bi-search" aria-hidden="true"></i> Fehlende Treffer</a>
         </nav>
         <div class="row g-2">
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md">
                 <div class="stat-card"><strong th:text="${total}">0</strong><span>gesamt</span></div>
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md">
                 <div class="stat-card"><strong th:text="${spieleOffensiveCount}">0</strong><span>Offensive</span></div>
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md">
                 <div class="stat-card"><strong th:text="${milanCount}">0</strong><span>Milan</span></div>
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md">
+                <div class="stat-card"><strong th:text="${bggMarketCount}">0</strong><span>BGG Market</span></div>
+            </div>
+            <div class="col-6 col-md">
                 <div class="stat-card"><strong th:text="${unknownsCount}">0</strong><span>unknowns.de</span></div>
             </div>
         </div>
