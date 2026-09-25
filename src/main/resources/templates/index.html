@@ -64,8 +64,17 @@
         <div class="col-12 col-sm-6 col-xl-4" th:each="offer : ${offers.content}">
             <article class="offer-card h-100">
                 <a class="image-wrap" th:href="@{/angebote/{id}(id=${offer.id})}">
-                    <img th:if="${offer.imageUrl != null}" th:src="${offer.imageUrl}" th:alt="${offer.name}" loading="lazy">
-                    <div class="image-placeholder" th:unless="${offer.imageUrl != null}">🎲</div>
+                    <img class="unknowns-logo"
+                         th:if="${offer.source.name() == 'UNKNOWNS'}"
+                         src="https://unknowns.de/images/style-4/pageLogo.svg"
+                         alt="Logo von unknowns.de"
+                         loading="lazy">
+                    <img th:if="${offer.source.name() != 'UNKNOWNS' and offer.imageUrl != null}"
+                         th:src="${offer.imageUrl}"
+                         th:alt="${offer.name}"
+                         loading="lazy">
+                    <div class="image-placeholder"
+                         th:if="${offer.source.name() != 'UNKNOWNS' and offer.imageUrl == null}">🎲</div>
                     <span class="bgg-rating"
                           th:if="${offer.bggRating != null}"
                           th:attr="aria-label=${'BoardGameGeek-Bewertung ' + #numbers.formatDecimal(offer.bggRating, 1, 1, 'COMMA') + ' von 10'}">

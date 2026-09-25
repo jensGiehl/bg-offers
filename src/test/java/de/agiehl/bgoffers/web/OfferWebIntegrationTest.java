@@ -29,6 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class OfferWebIntegrationTest {
 
+    private static final String UNKNOWNS_LOGO_URL = "https://unknowns.de/images/style-4/pageLogo.svg";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -77,8 +79,18 @@ class OfferWebIntegrationTest {
         bundleOffer.setBggStatus(LookupStatus.SKIPPED);
         bundleOffer.setComparisonStatus(LookupStatus.SKIPPED);
         var savedBundle = repository.saveAndFlush(bundleOffer);
+        var unknownsOffer = Offer.create(
+                OfferSource.UNKNOWNS,
+                OfferType.FORUM_POST,
+                "Unknowns-Schnäppchen",
+                "https://unknowns.de/forum/thread/42-unknowns-schnaeppchen/",
+                now);
+        unknownsOffer.setBggStatus(LookupStatus.SKIPPED);
+        unknownsOffer.setComparisonStatus(LookupStatus.SKIPPED);
+        var savedUnknownsOffer = repository.saveAndFlush(unknownsOffer);
         activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(saved, now));
         activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(savedBundle, now.plusSeconds(15)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(savedUnknownsOffer, now.plusSeconds(20)));
         activityLogRepository.saveAndFlush(ActivityLogEntry.lookupRetry(
                 saved, "BoardGameGeek", 2, 3, now.plusSeconds(30)));
         activityLogRepository.saveAndFlush(ActivityLogEntry.httpRetry(
@@ -98,12 +110,18 @@ class OfferWebIntegrationTest {
                         org.hamcrest.Matchers.containsString("Nicht erforderlich"))))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "aria-label=\"BoardGameGeek-Bewertung 7,8 von 10\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "src=\"" + UNKNOWNS_LOGO_URL + "\"")))
                 .andExpect(result -> assertThat(result.getResponse().getContentAsString())
                         .containsOnlyOnce("class=\"bgg-rating\""));
         mockMvc.perform(get("/angebote/{id}", saved.getId()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Verfügbare Angebote")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Want to buy")));
+        mockMvc.perform(get("/angebote/{id}", savedUnknownsOffer.getId()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "src=\"" + UNKNOWNS_LOGO_URL + "\"")));
         mockMvc.perform(get("/aktivitaeten"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Test-Gruppendeal")))
@@ -112,6 +130,8 @@ class OfferWebIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Versuch 2 von 3")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("HTTP 500")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Telegram-Nachricht versendet")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "src=\"" + UNKNOWNS_LOGO_URL + "\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("Nicht erforderlich"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(

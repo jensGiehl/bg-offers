@@ -76,8 +76,18 @@
                 <div th:if="${activity.offerId != null}">
                     <div class="offer-preview">
                         <a class="preview-image" th:href="@{/angebote/{id}(id=${activity.offerId})}" tabindex="-1" aria-hidden="true">
-                            <img th:if="${activity.imageUrl != null}" th:src="${activity.imageUrl}" th:alt="${activity.offerName}" loading="lazy">
-                            <i th:unless="${activity.imageUrl != null}" class="bi bi-dice-5" aria-hidden="true"></i>
+                            <img class="unknowns-logo"
+                                 th:if="${activity.source != null and activity.source.name() == 'UNKNOWNS'}"
+                                 src="https://unknowns.de/images/style-4/pageLogo.svg"
+                                 alt=""
+                                 loading="lazy">
+                            <img th:if="${(activity.source == null or activity.source.name() != 'UNKNOWNS') and activity.imageUrl != null}"
+                                 th:src="${activity.imageUrl}"
+                                 th:alt="${activity.offerName}"
+                                 loading="lazy">
+                            <i th:if="${(activity.source == null or activity.source.name() != 'UNKNOWNS') and activity.imageUrl == null}"
+                               class="bi bi-dice-5"
+                               aria-hidden="true"></i>
                         </a>
                         <div class="min-w-0 flex-grow-1">
                             <a class="preview-title" th:href="@{/angebote/{id}(id=${activity.offerId})}" th:text="${activity.offerName}">Spielname</a>

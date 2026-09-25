@@ -20,8 +20,15 @@
     <article class="detail-card overflow-hidden">
         <div class="row g-0">
             <div class="col-12 col-lg-5 detail-image">
-                <img th:if="${offer.imageUrl != null}" th:src="${offer.imageUrl}" th:alt="${offer.name}">
-                <div class="image-placeholder" th:unless="${offer.imageUrl != null}">🎲</div>
+                <img class="unknowns-logo"
+                     th:if="${offer.source.name() == 'UNKNOWNS'}"
+                     src="https://unknowns.de/images/style-4/pageLogo.svg"
+                     alt="Logo von unknowns.de">
+                <img th:if="${offer.source.name() != 'UNKNOWNS' and offer.imageUrl != null}"
+                     th:src="${offer.imageUrl}"
+                     th:alt="${offer.name}">
+                <div class="image-placeholder"
+                     th:if="${offer.source.name() != 'UNKNOWNS' and offer.imageUrl == null}">🎲</div>
             </div>
             <div class="col-12 col-lg-7 p-4 p-md-5">
                 <div class="d-flex flex-wrap gap-2 mb-3">
