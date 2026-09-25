@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -83,7 +84,7 @@ class OfferImportServiceTest {
     }
 
     @Test
-    void importsAndEnrichesWithoutNotificationDuringInitialImport() {
+    void pausesNotificationsForTwoHoursDuringInitialImport() {
         var repository = mock(OfferRepository.class);
         var bgg = mock(BggLookupService.class);
         var comparison = mock(PriceComparisonService.class);
@@ -91,39 +92,52 @@ class OfferImportServiceTest {
         var activityLog = mock(ActivityLogService.class);
         var scraper = mock(OfferScraper.class);
         var stored = new AtomicReference<Offer>();
-        var scraped = scraped("19.99");
+        var first = scraped("19.99");
+        var changed = scraped("17.99");
+        var startedAt = Instant.parse("2026-09-24T10:00:00Z");
+        var clock = mock(Clock.class);
 
         when(scraper.source()).thenReturn(OfferSource.MILAN);
-        when(scraper.scrape()).thenReturn(List.of(scraped));
-        when(repository.findBySourceAndSourceUrl(OfferSource.MILAN, scraped.sourceUrl()))
-                .thenReturn(Optional.empty());
+        when(scraper.scrape())
+                .thenReturn(List.of(first))
+                .thenReturn(List.of(changed));
+        when(repository.findBySourceAndSourceUrl(OfferSource.MILAN, first.sourceUrl()))
+                .thenAnswer(invocation -> Optional.ofNullable(stored.get()));
         when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
             var offer = invocation.getArgument(0, Offer.class);
             stored.set(offer);
             return offer;
         });
-        when(bgg.lookup(scraped.name())).thenReturn(
+        when(bgg.lookup(first.name())).thenReturn(
                 new BggResult(LookupStatus.FOUND, 42, new BigDecimal("7.8"), 120, 17));
-        when(comparison.lookup(scraped.name(), 42)).thenReturn(
+        when(comparison.lookup(first.name(), 42)).thenReturn(
                 new PriceComparisonResult(
                         LookupStatus.FOUND,
                         "https://compare.example/testspiel",
                         new BigDecimal("24.99"),
                         new BigDecimal("16.50")));
+        when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
+        when(clock.instant()).thenReturn(
+                startedAt,
+                startedAt.plus(Duration.ofMinutes(30)),
+                startedAt.plus(Duration.ofHours(2)));
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
                 de.agiehl.bgoffers.TestProperties.create(true),
                 new GameNameNormalizer(),
-                Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
+                clock);
 
         service.importAll();
+        service.importAll();
 
-        verify(bgg).lookup(scraped.name());
-        verify(comparison).lookup(scraped.name(), 42);
+        verify(bgg, times(2)).lookup(first.name());
+        verify(comparison, times(2)).lookup(first.name(), 42);
         verify(activityLog).recordOfferFound(any(Offer.class), any(Instant.class));
-        verify(notifier, never()).sendOffer(any(Offer.class));
-        assertThat(stored.get().getNotificationFingerprint()).isNull();
-        assertThat(stored.get().getNotifiedAt()).isNull();
+        verify(activityLog).recordPriceChanged(
+                any(Offer.class), eq(new BigDecimal("19.99")), any(Instant.class));
+        verify(notifier).sendOffer(any(Offer.class));
+        assertThat(stored.get().getNotificationFingerprint()).isNotBlank();
+        assertThat(stored.get().getNotifiedAt()).isEqualTo(startedAt.plus(Duration.ofHours(2)));
     }
 
     @Test

@@ -61,7 +61,7 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 
 | Variable | Bedeutung | Standard |
 |---|---|---|
-| `INITIAL_IMPORT` | Importiert und speichert Angebote ohne Benachrichtigungen | `false` |
+| `INITIAL_IMPORT` | Unterdrückt Angebotsmeldungen für zwei Stunden nach dem Anwendungsstart | `false` |
 | `TELEGRAM_BOT_TOKEN` | Token des Telegram-Bots | leer, Ausgabe auf der Konsole |
 | `TELEGRAM_CHAT_ID` | Ziel-Chat oder Kanal | leer, Ausgabe auf der Konsole |
 | `BGG_API_TOKEN` | API-Token für BoardGameGeek | leer, BGG-Status „Nicht konfiguriert“ |
@@ -84,7 +84,7 @@ Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sourc
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
 
-Mit `INITIAL_IMPORT=true` werden Angebote weiterhin vollständig importiert, angereichert und im Activity Log erfasst, aber nicht gemeldet. Nach dem initialen Befüllen sollte die Variable wieder auf `false` gesetzt werden. Bereits importierte, unveränderte Angebote werden anschließend nicht nachträglich gemeldet; Benachrichtigungen beginnen mit neuen Angeboten oder Preisänderungen.
+Mit `INITIAL_IMPORT=true` werden Angebote während der ersten zwei Stunden nach dem Anwendungsstart weiterhin vollständig importiert, angereichert und im Activity Log erfasst, aber nicht gemeldet. Danach werden Benachrichtigungen automatisch wieder aktiviert, auch wenn die Variable weiterhin auf `true` steht. Bereits während des Zeitfensters importierte, unveränderte Angebote werden nicht nachträglich gemeldet; Benachrichtigungen beginnen mit neuen Angeboten oder Preisänderungen.
 
 ## Web-Oberfläche
 

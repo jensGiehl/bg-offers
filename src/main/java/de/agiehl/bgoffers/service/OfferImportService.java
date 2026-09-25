@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OfferImportService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OfferImportService.class);
+    private static final Duration INITIAL_IMPORT_NOTIFICATION_PAUSE = Duration.ofHours(2);
 
     private final List<OfferScraper> scrapers;
     private final OfferRepository repository;
@@ -45,6 +47,7 @@ public class OfferImportService {
     private final OfferProperties properties;
     private final GameNameNormalizer normalizer;
     private final Clock clock;
+    private final Instant initialImportEndsAt;
     private final AtomicBoolean running = new AtomicBoolean();
 
     @Autowired
@@ -88,6 +91,9 @@ public class OfferImportService {
         this.properties = properties;
         this.normalizer = normalizer;
         this.clock = clock;
+        this.initialImportEndsAt = properties.initialImport()
+                ? Instant.now(clock).plus(INITIAL_IMPORT_NOTIFICATION_PAUSE)
+                : Instant.MIN;
     }
 
     public void importAll() {
@@ -232,7 +238,7 @@ public class OfferImportService {
     }
 
     private void notifyWhenRelevant(Offer offer, Instant now) {
-        if (properties.initialImport() || !shouldNotify(offer)) {
+        if (now.isBefore(initialImportEndsAt) || !shouldNotify(offer)) {
             return;
         }
         var fingerprint = fingerprint(offer);
