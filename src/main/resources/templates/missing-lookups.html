@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Suchbegriffe ohne Treffer bei BoardGameGeek und Brettspiel-Angebote">
+    <title>Fehlende Treffer · BG Offers</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="hero missing-hero py-4 py-md-5">
+    <div class="container">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="brand-mark"><i class="bi bi-search" aria-hidden="true"></i></div>
+            <div>
+                <p class="eyebrow mb-1">Recherchekontrolle</p>
+                <h1 class="display-6 fw-bold mb-0">Fehlende Treffer</h1>
+            </div>
+        </div>
+        <p class="lead text-secondary mb-4">Bereinigte Suchbegriffe, zu denen die letzte Recherche kein Ergebnis geliefert hat.</p>
+        <nav class="view-switch d-inline-flex" aria-label="Hauptnavigation">
+            <a href="/"><i class="bi bi-grid" aria-hidden="true"></i> Angebote</a>
+            <a href="/aktivitaeten"><i class="bi bi-clock-history" aria-hidden="true"></i> Aktivitäten</a>
+            <a class="active" href="/fehlende-treffer" aria-current="page"><i class="bi bi-search" aria-hidden="true"></i> Fehlende Treffer</a>
+        </nav>
+    </div>
+</header>
+
+<main class="container py-4 py-md-5">
+    <div class="row g-3 g-lg-4">
+        <div class="col-12 col-lg-6">
+            <section class="missing-panel h-100">
+                <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                    <div>
+                        <p class="eyebrow mb-1">BoardGameGeek</p>
+                        <h2 class="h4 mb-0">Ohne BGG-Treffer</h2>
+                    </div>
+                    <span class="missing-count" th:text="${#lists.size(bggTerms)}">0</span>
+                </div>
+                <p class="text-secondary" th:if="${#lists.isEmpty(bggTerms)}">Für alle abgefragten Begriffe wurde ein Treffer gefunden.</p>
+                <ul class="missing-list list-unstyled mb-0" th:unless="${#lists.isEmpty(bggTerms)}">
+                    <li th:each="term : ${bggTerms}">
+                        <i class="bi bi-hexagon" aria-hidden="true"></i>
+                        <span th:text="${term}">Suchbegriff</span>
+                    </li>
+                </ul>
+            </section>
+        </div>
+        <div class="col-12 col-lg-6">
+            <section class="missing-panel h-100">
+                <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                    <div>
+                        <p class="eyebrow mb-1">Preisvergleich</p>
+                        <h2 class="h4 mb-0">Ohne Brettspiel-Angebote-Treffer</h2>
+                    </div>
+                    <span class="missing-count" th:text="${#lists.size(comparisonTerms)}">0</span>
+                </div>
+                <p class="text-secondary" th:if="${#lists.isEmpty(comparisonTerms)}">Für alle abgefragten Begriffe wurde ein Treffer gefunden.</p>
+                <ul class="missing-list list-unstyled mb-0" th:unless="${#lists.isEmpty(comparisonTerms)}">
+                    <li th:each="term : ${comparisonTerms}">
+                        <i class="bi bi-tags" aria-hidden="true"></i>
+                        <span th:text="${term}">Suchbegriff</span>
+                    </li>
+                </ul>
+            </section>
+        </div>
+    </div>
+</main>
+
+<footer class="container py-4 text-secondary small">Bundle-Angebote und nicht konfigurierte Quellen werden nicht als fehlende Treffer gezählt.</footer>
+<script src="/webjars/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

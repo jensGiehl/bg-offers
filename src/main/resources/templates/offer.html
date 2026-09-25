@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${offer.name} + ' · BG Offers'">Angebot · BG Offers</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="container py-4 py-md-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <a class="back-link d-inline-flex" href="/"><i class="bi bi-arrow-left me-2" aria-hidden="true"></i>Alle Angebote</a>
+        <div class="d-flex flex-wrap gap-3">
+            <a class="back-link d-inline-flex" href="/aktivitaeten"><i class="bi bi-clock-history me-2" aria-hidden="true"></i>Aktivitäten</a>
+            <a class="back-link d-inline-flex" href="/fehlende-treffer"><i class="bi bi-search me-2" aria-hidden="true"></i>Fehlende Treffer</a>
+        </div>
+    </div>
+    <article class="detail-card overflow-hidden">
+        <div class="row g-0">
+            <div class="col-12 col-lg-5 detail-image">
+                <img th:if="${offer.imageUrl != null}" th:src="${offer.imageUrl}" th:alt="${offer.name}">
+                <div class="image-placeholder" th:unless="${offer.imageUrl != null}">🎲</div>
+            </div>
+            <div class="col-12 col-lg-7 p-4 p-md-5">
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge text-bg-dark" th:text="${offer.source.displayName}">Quelle</span>
+                    <span class="badge bg-accent" th:text="${offer.type.displayName}">Typ</span>
+                </div>
+                <h1 class="display-6 fw-bold" th:text="${offer.name}">Spielname</h1>
+                <p class="detail-price" th:if="${offer.price != null}"
+                   th:text="${#numbers.formatDecimal(offer.price, 1, 2, 'COMMA')} + ' €'">0,00 €</p>
+                <p class="availability" th:if="${offer.availability != null}" th:text="${offer.availability}">Verfügbarkeit</p>
+                <a class="btn btn-accent btn-lg mb-4" th:href="${offer.sourceUrl}" target="_blank" rel="noopener"
+                   th:text="${offer.type.name() == 'FORUM_POST' ? 'Zum Beitrag ↗' : 'Zum Angebot ↗'}">Zum Angebot ↗</a>
+
+                <div class="row g-3">
+                    <div class="col-12 col-md-6" th:unless="${offer.comparisonStatus.name() == 'SKIPPED'}">
+                        <section class="info-panel h-100">
+                            <p class="eyebrow">Preisvergleich</p>
+                            <dl class="mb-0">
+                                <div><dt>Verfügbare Angebote</dt><dd th:text="${offer.comparisonAvailablePrice == null ? '–' : #numbers.formatDecimal(offer.comparisonAvailablePrice, 1, 2, 'COMMA') + ' €'}">–</dd></div>
+                                <div><dt>Bestpreis</dt><dd th:text="${offer.comparisonBestPrice == null ? '–' : #numbers.formatDecimal(offer.comparisonBestPrice, 1, 2, 'COMMA') + ' €'}">–</dd></div>
+                                <div><dt>Status</dt><dd th:text="${offer.comparisonStatus.displayName}">Status</dd></div>
+                            </dl>
+                            <a th:if="${offer.comparisonUrl != null}" th:href="${offer.comparisonUrl}" target="_blank" rel="noopener">Vergleich öffnen ↗</a>
+                        </section>
+                    </div>
+                    <div class="col-12 col-md-6" th:unless="${offer.bggStatus.name() == 'SKIPPED'}">
+                        <section class="info-panel h-100">
+                            <p class="eyebrow">BoardGameGeek</p>
+                            <dl class="mb-0">
+                                <div><dt>Bewertung</dt><dd th:text="${offer.bggRating ?: '–'}">–</dd></div>
+                                <div><dt>Want to buy</dt><dd th:text="${offer.bggWantToBuy ?: '–'}">–</dd></div>
+                                <div><dt>Want in trade</dt><dd th:text="${offer.bggWantInTrade ?: '–'}">–</dd></div>
+                                <div><dt>Status</dt><dd th:text="${offer.bggStatus.displayName}">Status</dd></div>
+                            </dl>
+                            <a th:if="${offer.bggId != null}" th:href="'https://boardgamegeek.com/boardgame/' + ${offer.bggId}" target="_blank" rel="noopener">BGG öffnen ↗</a>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="timestamps mt-4">
+                    <span>Erfasst <strong th:text="${#temporals.format(offer.firstSeenAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
+                    <span>Zuletzt gesehen <strong th:text="${#temporals.format(offer.lastSeenAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
+                    <span>Letzte Änderung <strong th:text="${#temporals.format(offer.lastChangedAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
+                </div>
+            </div>
+        </div>
+    </article>
+</main>
+<script src="/webjars/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

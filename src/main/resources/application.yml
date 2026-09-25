@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: bg-offers
+  main:
+    banner-mode: off
+  datasource:
+    url: jdbc:h2:file:${DB_PATH:./data/bg-offers}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  thymeleaf:
+    cache: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
+
+offers:
+  sources:
+    spiele-offensive: https://www.spiele-offensive.de/
+    spiele-offensive-enabled: ${SPIELE_OFFENSIVE_ENABLED:true}
+    milan: https://www.milan-spiele.de/angebote-c-103.html?perPage=250&sort=5d
+    milan-enabled: ${MILAN_ENABLED:true}
+    unknowns: https://unknowns.de/forum/board/43-schn%C3%A4ppchen/
+    unknowns-login: https://unknowns.de/login/
+    unknowns-enabled: ${UNKNOWNS_ENABLED:true}
+    unknowns-username: ${UNKNOWNS_USERNAME:}
+    unknowns-password: ${UNKNOWNS_PASSWORD:}
+    price-comparison: https://www.brettspiel-angebote.de/
+  http:
+    timeout: 30s
+    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36
+    max-attempts: 3
+    retry-delay: 750ms
+    milan-concurrency: 2
+  schedule:
+    initial-delay: 15s
+    crawl-delay: 5m
+    health-cron: "0 0 8 * * *"
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_CHAT_ID:}
+  bgg:
+    api-token: ${BGG_API_TOKEN:}
+
+logging:
+  level:
+    de.agiehl.bgoffers: INFO

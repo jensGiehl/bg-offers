@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Aktivitätsverlauf der Angebotssuche und Telegram-Benachrichtigungen">
+    <title>Aktivitäten · BG Offers</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="hero activity-hero py-4 py-md-5">
+    <div class="container">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="brand-mark"><i class="bi bi-activity" aria-hidden="true"></i></div>
+            <div>
+                <p class="eyebrow mb-1">Systemverlauf</p>
+                <h1 class="display-6 fw-bold mb-0">Aktivitäten</h1>
+            </div>
+        </div>
+        <p class="lead text-secondary mb-4">Neue Funde, Preisänderungen, Recherche-Ergebnisse und Telegram-Zustellungen auf einen Blick.</p>
+        <nav class="view-switch d-inline-flex mb-4" aria-label="Hauptnavigation">
+            <a href="/"><i class="bi bi-grid" aria-hidden="true"></i> Angebote</a>
+            <a class="active" href="/aktivitaeten" aria-current="page"><i class="bi bi-clock-history" aria-hidden="true"></i> Aktivitäten</a>
+            <a href="/fehlende-treffer"><i class="bi bi-search" aria-hidden="true"></i> Fehlende Treffer</a>
+        </nav>
+        <div class="row g-2">
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${total}">0</strong><span>Einträge</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${offerEvents}">0</strong><span>Angebote</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${retryEvents}">0</strong><span>Retries</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${telegramEvents}">0</strong><span>Telegram</span></div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container py-4 py-md-5">
+    <div class="empty-state" th:if="${activities.empty}">
+        <span><i class="bi bi-clock-history" aria-hidden="true"></i></span>
+        <h2>Noch keine Aktivitäten</h2>
+        <p>Neue Funde, Preisänderungen und Telegram-Zustellungen erscheinen nach dem nächsten Abruf hier.</p>
+    </div>
+
+    <section class="activity-timeline" th:unless="${activities.empty}" aria-label="Aktivitätsverlauf">
+        <article class="activity-entry"
+                 th:each="activity : ${activities.content}"
+                 th:classappend="${' activity-' + activity.type.name().toLowerCase()}">
+            <div class="activity-marker" th:switch="${activity.type.name()}">
+                <i th:case="'OFFER_FOUND'" class="bi bi-stars" aria-hidden="true"></i>
+                <i th:case="'PRICE_CHANGED'" class="bi bi-graph-down-arrow" aria-hidden="true"></i>
+                <i th:case="'HTTP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                <i th:case="'LOOKUP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                <i th:case="'TELEGRAM_SENT'" class="bi bi-telegram" aria-hidden="true"></i>
+                <i th:case="*" class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+            </div>
+
+            <div class="activity-card">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="activity-label" th:text="${activity.type.displayName}">Aktivität</span>
+                        <span class="source-chip" th:if="${activity.source != null}" th:text="${activity.source.displayName}">Quelle</span>
+                    </div>
+                    <time class="activity-time"
+                          th:datetime="${activity.occurredAt}"
+                          th:text="${#temporals.format(activity.occurredAt, 'dd.MM.yyyy · HH:mm')}">24.09.2026 · 12:00</time>
+                </div>
+
+                <div th:if="${activity.offerId != null}">
+                    <div class="offer-preview">
+                        <a class="preview-image" th:href="@{/angebote/{id}(id=${activity.offerId})}" tabindex="-1" aria-hidden="true">
+                            <img th:if="${activity.imageUrl != null}" th:src="${activity.imageUrl}" th:alt="${activity.offerName}" loading="lazy">
+                            <i th:unless="${activity.imageUrl != null}" class="bi bi-dice-5" aria-hidden="true"></i>
+                        </a>
+                        <div class="min-w-0 flex-grow-1">
+                            <a class="preview-title" th:href="@{/angebote/{id}(id=${activity.offerId})}" th:text="${activity.offerName}">Spielname</a>
+                            <div class="price-change" th:if="${activity.type.name() == 'PRICE_CHANGED'}">
+                                <span class="old-price" th:text="${activity.previousPrice == null ? '–' : #numbers.formatDecimal(activity.previousPrice, 1, 2, 'COMMA') + ' €'}">29,99 €</span>
+                                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                <strong th:text="${activity.currentPrice == null ? '–' : #numbers.formatDecimal(activity.currentPrice, 1, 2, 'COMMA') + ' €'}">19,99 €</strong>
+                            </div>
+                            <strong class="new-price" th:if="${activity.type.name() == 'OFFER_FOUND'}"
+                                    th:text="${activity.currentPrice == null ? 'Preis nicht angegeben' : #numbers.formatDecimal(activity.currentPrice, 1, 2, 'COMMA') + ' €'}">19,99 €</strong>
+                        </div>
+                    </div>
+
+                    <div class="lookup-grid mt-3"
+                         th:if="${activity.comparisonStatus.name() != 'SKIPPED' or activity.bggStatus.name() != 'SKIPPED'}">
+                        <div class="lookup-result"
+                             th:unless="${activity.comparisonStatus.name() == 'SKIPPED'}"
+                             th:classappend="${' status-' + activity.comparisonStatus.name().toLowerCase()}">
+                            <i class="bi bi-tags" aria-hidden="true"></i>
+                            <span><small>Brettspiel-Angebote</small><strong th:text="${activity.comparisonStatus.displayName}">Gefunden</strong></span>
+                        </div>
+                        <div class="lookup-result"
+                             th:unless="${activity.bggStatus.name() == 'SKIPPED'}"
+                             th:classappend="${' status-' + activity.bggStatus.name().toLowerCase()}">
+                            <i class="bi bi-hexagon" aria-hidden="true"></i>
+                            <span><small>BoardGameGeek</small><strong th:text="${activity.bggStatus.displayName}">Gefunden</strong></span>
+                        </div>
+                    </div>
+                    <p class="retry-note mb-0 mt-3" th:if="${activity.type.name() == 'LOOKUP_RETRY'}" th:text="${activity.detail}">Erneuter Versuch</p>
+                </div>
+
+                <div class="retry-note" th:if="${activity.type.name() == 'HTTP_RETRY'}">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                    <p class="mb-0" th:text="${activity.detail}">HTTP-Abruf wird wiederholt</p>
+                </div>
+
+                <div class="telegram-note"
+                     th:if="${activity.type.name() == 'TELEGRAM_SENT' or activity.type.name() == 'TELEGRAM_FAILED'}">
+                    <i class="bi bi-shield-check" aria-hidden="true"></i>
+                    <p class="mb-0" th:if="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht wurde erfolgreich übermittelt. Inhalt und Ziel werden nicht gespeichert.</p>
+                    <p class="mb-0" th:unless="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht konnte nicht übermittelt werden. Inhalt und Ziel werden nicht gespeichert.</p>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <nav class="d-flex justify-content-between align-items-center mt-5" th:if="${activities.totalPages > 1}" aria-label="Seitennavigation">
+        <a class="btn btn-outline-dark"
+           th:classappend="${activities.first} ? 'disabled'"
+           th:href="@{/aktivitaeten(page=${activities.number - 1})}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Zurück</a>
+        <span class="text-secondary" th:text="'Seite ' + ${activities.number + 1} + ' von ' + ${activities.totalPages}">Seite</span>
+        <a class="btn btn-outline-dark"
+           th:classappend="${activities.last} ? 'disabled'"
+           th:href="@{/aktivitaeten(page=${activities.number + 1})}">Weiter <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+    </nav>
+</main>
+
+<footer class="container py-4 text-secondary small">Das Activity Log wird dauerhaft in der Datenbank gespeichert.</footer>
+<script src="/webjars/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

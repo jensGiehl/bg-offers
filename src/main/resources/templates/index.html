@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Gesammelte Brettspielangebote und neue Schnäppchenbeiträge von unknowns.de">
+    <title>BG Offers</title>
+    <link rel="stylesheet" href="/webjars/bootstrap/5.3.8/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/webjars/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="hero py-4 py-md-5">
+    <div class="container">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="brand-mark">BG</div>
+            <div>
+                <p class="eyebrow mb-1">Brettspiel-Schnäppchen</p>
+                <h1 class="display-6 fw-bold mb-0">Angebote im Blick</h1>
+            </div>
+        </div>
+        <p class="lead text-secondary mb-4">Automatisch gesammelt, mit BGG angereichert und um neue unknowns.de-Schnäppchenbeiträge ergänzt.</p>
+        <nav class="view-switch d-inline-flex mb-4" aria-label="Hauptnavigation">
+            <a class="active" href="/" aria-current="page"><i class="bi bi-grid" aria-hidden="true"></i> Angebote</a>
+            <a href="/aktivitaeten"><i class="bi bi-clock-history" aria-hidden="true"></i> Aktivitäten</a>
+            <a href="/fehlende-treffer"><i class="bi bi-search" aria-hidden="true"></i> Fehlende Treffer</a>
+        </nav>
+        <div class="row g-2">
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${total}">0</strong><span>gesamt</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${spieleOffensiveCount}">0</strong><span>Offensive</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${milanCount}">0</strong><span>Milan</span></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card"><strong th:text="${unknownsCount}">0</strong><span>unknowns.de</span></div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container py-4 py-md-5">
+    <nav class="filter-bar d-flex gap-2 overflow-x-auto mb-4" aria-label="Quellenfilter">
+        <a class="btn rounded-pill"
+           th:classappend="${selectedSource == null} ? 'btn-dark' : 'btn-outline-dark'"
+           href="/">Alle</a>
+        <a class="btn rounded-pill text-nowrap"
+           th:each="source : ${sources}"
+           th:classappend="${selectedSource == source} ? 'btn-dark' : 'btn-outline-dark'"
+           th:href="@{/(source=${source})}"
+           th:text="${source.displayName}">Quelle</a>
+    </nav>
+
+    <div class="empty-state" th:if="${offers.empty}">
+        <span>🎲</span>
+        <h2>Noch keine Angebote erfasst</h2>
+        <p>Der erste automatische Abruf startet kurz nach dem Anwendungsstart.</p>
+    </div>
+
+    <div class="row g-3 g-lg-4" th:unless="${offers.empty}">
+        <div class="col-12 col-sm-6 col-xl-4" th:each="offer : ${offers.content}">
+            <article class="offer-card h-100">
+                <a class="image-wrap" th:href="@{/angebote/{id}(id=${offer.id})}">
+                    <img th:if="${offer.imageUrl != null}" th:src="${offer.imageUrl}" th:alt="${offer.name}" loading="lazy">
+                    <div class="image-placeholder" th:unless="${offer.imageUrl != null}">🎲</div>
+                    <span class="bgg-rating"
+                          th:if="${offer.bggRating != null}"
+                          th:attr="aria-label=${'BoardGameGeek-Bewertung ' + #numbers.formatDecimal(offer.bggRating, 1, 1, 'COMMA') + ' von 10'}">
+                        <small>BGG</small>
+                        <strong th:text="${#numbers.formatDecimal(offer.bggRating, 1, 1, 'COMMA')}">7,8</strong>
+                    </span>
+                    <span class="source-badge" th:text="${offer.source.displayName}">Quelle</span>
+                </a>
+                <div class="p-3 p-md-4 d-flex flex-column flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                        <span class="type-label" th:text="${offer.type.displayName}">Angebot</span>
+                        <strong class="price" th:if="${offer.price != null}"
+                                th:text="${#numbers.formatDecimal(offer.price, 1, 2, 'COMMA')} + ' €'">0,00 €</strong>
+                    </div>
+                    <h2 class="h5 fw-bold mb-2" th:text="${offer.name}">Spielname</h2>
+                    <p class="availability mb-3" th:if="${offer.availability != null}" th:text="${offer.availability}">Verfügbarkeit</p>
+                    <div class="comparison mt-auto" th:if="${offer.comparisonAvailablePrice != null}">
+                        Vergleich <strong th:text="${#numbers.formatDecimal(offer.comparisonAvailablePrice, 1, 2, 'COMMA')} + ' €'">0,00 €</strong>
+                    </div>
+                    <a class="stretched-link mt-3 fw-semibold text-decoration-none" th:href="@{/angebote/{id}(id=${offer.id})}">Details ansehen →</a>
+                </div>
+            </article>
+        </div>
+    </div>
+
+    <nav class="d-flex justify-content-between align-items-center mt-5" th:if="${offers.totalPages > 1}" aria-label="Seitennavigation">
+        <a class="btn btn-outline-dark"
+           th:classappend="${offers.first} ? 'disabled'"
+           th:href="@{/(page=${offers.number - 1},source=${selectedSource})}">← Zurück</a>
+        <span class="text-secondary" th:text="'Seite ' + ${offers.number + 1} + ' von ' + ${offers.totalPages}">Seite</span>
+        <a class="btn btn-outline-dark"
+           th:classappend="${offers.last} ? 'disabled'"
+           th:href="@{/(page=${offers.number + 1},source=${selectedSource})}">Weiter →</a>
+    </nav>
+</main>
+
+<footer class="container py-4 text-secondary small">Nur Lesezugriff · Aktualisierung alle fünf Minuten</footer>
+<script src="/webjars/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
