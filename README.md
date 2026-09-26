@@ -80,6 +80,27 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | `DB_PASSWORD` | H2-Passwort | leer |
 | `SERVER_PORT` | HTTP-Port der Anwendung | `8080` |
 
+### Telegram-Bot-Token und Chat-ID ermitteln
+
+1. In Telegram den verifizierten Bot [@BotFather](https://t.me/BotFather) öffnen, `/newbot` senden und den Anweisungen folgen. BotFather liefert anschließend einen Token im Format `123456789:ABC...`. Dieser vollständige Wert wird als `TELEGRAM_BOT_TOKEN` verwendet. Die Zahl vor dem Doppelpunkt ist die numerische Bot-ID; sie allein reicht für die Anwendung nicht aus.
+2. Den neu erstellten Bot öffnen und mindestens eine Nachricht, beispielsweise `/start`, an ihn senden. Für eine Gruppe den Bot zur Gruppe hinzufügen und dort eine Nachricht an ihn senden. Für einen Kanal muss der Bot als Administrator hinzugefügt und eine Nachricht im Kanal veröffentlicht werden.
+3. Den Token lokal als Umgebungsvariable setzen und die Telegram-Updates abrufen:
+
+```bash
+export TELEGRAM_BOT_TOKEN="123456789:ABC..."
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"
+```
+
+Die gesuchte `TELEGRAM_CHAT_ID` steht in der Antwort unter `result[].message.chat.id`. Bei Kanalbeiträgen steht sie unter `result[].channel_post.chat.id`. Private Chat-IDs sind üblicherweise positiv, Gruppen- und Kanal-IDs häufig negativ und beginnen bei Supergruppen beziehungsweise Kanälen meist mit `-100`. Falls `result` leer ist, nach dem Senden einer neuen Nachricht erneut aufrufen. Ein bereits für den Bot eingerichteter Webhook kann `getUpdates` blockieren.
+
+Optional lässt sich die Bot-ID mit demselben Token direkt prüfen:
+
+```bash
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"
+```
+
+Sie steht in der Antwort unter `result.id`. Der Bot-Token ist ein Zugangsschlüssel und darf weder in die Versionsverwaltung noch in Logs oder Screenshots gelangen. Falls er offengelegt wurde, kann er über BotFather widerrufen und neu erzeugt werden.
+
 Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen.
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
