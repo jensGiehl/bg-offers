@@ -70,8 +70,8 @@ public class OfferController {
             Model model) {
         var pageRequest = PageRequest.of(Math.max(page, 0), 24);
         var offers = source == null
-                ? repository.findAllByOrderByLastSeenAtDesc(pageRequest)
-                : repository.findBySourceOrderByLastSeenAtDesc(source, pageRequest);
+                ? repository.findAllByOrderByLastChangedAtDescIdDesc(pageRequest)
+                : repository.findBySourceOrderByLastChangedAtDescIdDesc(source, pageRequest);
         model.addAttribute("offers", offers);
         model.addAttribute("selectedSource", source);
         model.addAttribute("sources", OfferSource.values());

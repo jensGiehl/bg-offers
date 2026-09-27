@@ -41,6 +41,40 @@ class OfferWebIntegrationTest {
     private ActivityLogRepository activityLogRepository;
 
     @Test
+    void sortsOverviewByLastChangeDescending() throws Exception {
+        var earlierChange = Offer.create(
+                OfferSource.MILAN,
+                OfferType.STANDARD,
+                "Früher aktualisiert",
+                "https://shop.example/earlier-change",
+                Instant.parse("2026-09-25T10:00:00Z"));
+        earlierChange.setLastSeenAt(Instant.parse("2026-09-27T12:00:00Z"));
+        repository.saveAndFlush(earlierChange);
+
+        var laterChange = Offer.create(
+                OfferSource.MILAN,
+                OfferType.STANDARD,
+                "Später aktualisiert",
+                "https://shop.example/later-change",
+                Instant.parse("2026-09-26T10:00:00Z"));
+        laterChange.setLastSeenAt(Instant.parse("2026-09-27T11:00:00Z"));
+        repository.saveAndFlush(laterChange);
+
+        mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertAppearsBefore(
+                        result.getResponse().getContentAsString(),
+                        "Später aktualisiert",
+                        "Früher aktualisiert"));
+        mockMvc.perform(get("/").queryParam("source", OfferSource.MILAN.name()))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertAppearsBefore(
+                        result.getResponse().getContentAsString(),
+                        "Später aktualisiert",
+                        "Früher aktualisiert"));
+    }
+
+    @Test
     void rendersOverviewAndOfferDetails() throws Exception {
         var now = Instant.parse("2026-09-24T10:00:00Z");
         var offer = Offer.create(
@@ -143,5 +177,10 @@ class OfferWebIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Zauberberg")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("Zauberberg (deutsch) Würfelspiel"))));
+    }
+
+    private void assertAppearsBefore(String html, String first, String second) {
+        assertThat(html).contains(first, second);
+        assertThat(html.indexOf(first)).isLessThan(html.indexOf(second));
     }
 }

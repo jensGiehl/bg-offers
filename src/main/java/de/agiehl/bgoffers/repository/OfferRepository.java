@@ -18,9 +18,9 @@ public interface OfferRepository extends JpaRepository<Offer, Long> {
 
     Optional<Offer> findFirstBySourceOrderByFirstSeenAtDesc(OfferSource source);
 
-    Page<Offer> findAllByOrderByLastSeenAtDesc(Pageable pageable);
+    Page<Offer> findAllByOrderByLastChangedAtDescIdDesc(Pageable pageable);
 
-    Page<Offer> findBySourceOrderByLastSeenAtDesc(OfferSource source, Pageable pageable);
+    Page<Offer> findBySourceOrderByLastChangedAtDescIdDesc(OfferSource source, Pageable pageable);
 
     long countBySource(OfferSource source);
 
