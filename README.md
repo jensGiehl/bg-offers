@@ -32,7 +32,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
 - Verwendet die Schnellsuche von brettspiel-angebote.de und verkürzt unbekannte Editionsnamen schrittweise, ohne eine abweichende Edition als Treffer zu übernehmen.
 - Prüft täglich um 08:00 Uhr Europe/Berlin mit „Scythe“, ob brettspiel-angebote.de weiterhin auswertbar ist.
-- Prüft im selben täglichen Lauf mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können.
+- Prüft im selben täglichen Lauf mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können. Nach einem fehlgeschlagenen Test wird beim ersten wieder erfolgreichen Lauf einmalig eine Entwarnung gesendet; weitere erfolgreiche Läufe bleiben still, bis erneut ein Fehler auftritt.
 
 ## Voraussetzungen
 
@@ -124,7 +124,7 @@ Normale Meldungen enthalten kompakt Name, Angebotspreis, Verfügbarkeit, verfüg
 
 Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche werden deshalb beim nächsten relevanten Lauf erneut versucht. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung.
 
-Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
+Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Sobald ein betroffener Test wieder erfolgreich ist, folgt genau eine Telegram-Entwarnung. Bleibt der Test erfolgreich, werden keine weiteren Entwarnungen gesendet. Dieser Zustand wird dauerhaft in der Datenbank gespeichert und überlebt Anwendungsneustarts. Schlägt die Zustellung der Entwarnung fehl, wird sie beim nächsten erfolgreichen Lauf erneut versucht. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
 
 ## Docker
 
@@ -162,7 +162,7 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 mvn test
 ```
 
-Die Tests prüfen unter anderem alle vier Quellen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
+Die Tests prüfen unter anderem alle vier Quellen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
 

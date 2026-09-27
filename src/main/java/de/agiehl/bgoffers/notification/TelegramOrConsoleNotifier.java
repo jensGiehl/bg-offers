@@ -74,6 +74,18 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 "parse_mode", "HTML"));
     }
 
+    @Override
+    public boolean sendHealthRecovery(String message) {
+        if (!properties.telegram().configured()) {
+            LOGGER.info("QUELLENENTWARNUNG: {}", message);
+            return true;
+        }
+        return send("sendMessage", fields(
+                "chat_id", properties.telegram().chatId(),
+                "text", "✅ <b>Quellentest wieder erfolgreich</b>\n" + escapeHtml(message),
+                "parse_mode", "HTML"));
+    }
+
     String htmlText(Offer offer) {
         if (offer.getType() == OfferType.FORUM_POST) {
             return "<b>%s</b>\n%s".formatted(

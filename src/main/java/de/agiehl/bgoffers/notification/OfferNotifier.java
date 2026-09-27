@@ -7,4 +7,6 @@ public interface OfferNotifier {
     boolean sendOffer(Offer offer);
 
     boolean sendHealthAlert(String message);
+
+    boolean sendHealthRecovery(String message);
 }

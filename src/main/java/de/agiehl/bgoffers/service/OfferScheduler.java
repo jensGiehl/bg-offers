@@ -1,8 +1,5 @@
 package de.agiehl.bgoffers.service;
 
-import de.agiehl.bgoffers.enrichment.BggLookupService;
-import de.agiehl.bgoffers.enrichment.PriceComparisonService;
-import de.agiehl.bgoffers.notification.OfferNotifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -10,22 +7,16 @@ import org.springframework.stereotype.Component;
 public class OfferScheduler {
 
     private final OfferImportService importService;
-    private final PriceComparisonService priceComparisonService;
-    private final BggLookupService bggLookupService;
+    private final ExternalHealthCheckService externalHealthCheckService;
     private final ScraperHealthService scraperHealthService;
-    private final OfferNotifier notifier;
 
     public OfferScheduler(
             OfferImportService importService,
-            PriceComparisonService priceComparisonService,
-            BggLookupService bggLookupService,
-            ScraperHealthService scraperHealthService,
-            OfferNotifier notifier) {
+            ExternalHealthCheckService externalHealthCheckService,
+            ScraperHealthService scraperHealthService) {
         this.importService = importService;
-        this.priceComparisonService = priceComparisonService;
-        this.bggLookupService = bggLookupService;
+        this.externalHealthCheckService = externalHealthCheckService;
         this.scraperHealthService = scraperHealthService;
-        this.notifier = notifier;
     }
 
     @Scheduled(
@@ -37,12 +28,7 @@ public class OfferScheduler {
 
     @Scheduled(cron = "${offers.schedule.health-cron}", zone = "Europe/Berlin")
     public void verifyHealth() {
-        if (!priceComparisonService.healthCheck()) {
-            notifier.sendHealthAlert("Die tägliche Suche nach „Scythe“ auf brettspiel-angebote.de konnte keine Preisdaten laden.");
-        }
-        if (!bggLookupService.healthCheck()) {
-            notifier.sendHealthAlert("Die tägliche Suche nach „Magical Athlete“ bei BoardGameGeek konnte keine Daten laden.");
-        }
+        externalHealthCheckService.verify();
         scraperHealthService.verifySources();
     }
 }
