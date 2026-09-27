@@ -19,10 +19,13 @@ RUN groupadd --system app && useradd --system --gid app --home-dir /app app
 WORKDIR /app
 COPY --from=java-runtime /opt/java/openjdk /opt/java/openjdk
 COPY --from=build /workspace/target/bg-offers-*.jar app.jar
-RUN mkdir /app/data && chown -R app:app /app
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && mkdir /app/data \
+    && chown -R app:app /app
 
 USER app
 EXPOSE 8080
 VOLUME ["/app/data"]
 
-ENTRYPOINT ["xvfb-run", "--auto-servernum", "java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["docker-entrypoint.sh"]
