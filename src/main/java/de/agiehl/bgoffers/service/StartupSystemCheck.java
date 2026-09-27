@@ -1,6 +1,7 @@
 package de.agiehl.bgoffers.service;
 
 import de.agiehl.bgoffers.config.OfferProperties;
+import de.agiehl.bgoffers.enrichment.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ public class StartupSystemCheck implements ApplicationRunner {
     private final List<OfferScraper> scrapers;
     private final OfferNotifier notifier;
     private final OfferProperties properties;
+    private final PriceComparisonService priceComparisonService;
     private final DryRunContext dryRunContext;
     private final ScraperExecutionCoordinator executionCoordinator;
 
@@ -35,6 +37,7 @@ public class StartupSystemCheck implements ApplicationRunner {
             List<OfferScraper> scrapers,
             OfferNotifier notifier,
             OfferProperties properties,
+            PriceComparisonService priceComparisonService,
             DryRunContext dryRunContext,
             ScraperExecutionCoordinator executionCoordinator) {
         this.scrapers = scrapers.stream()
@@ -42,6 +45,7 @@ public class StartupSystemCheck implements ApplicationRunner {
                 .toList();
         this.notifier = notifier;
         this.properties = properties;
+        this.priceComparisonService = priceComparisonService;
         this.dryRunContext = dryRunContext;
         this.executionCoordinator = executionCoordinator;
     }
@@ -52,40 +56,56 @@ public class StartupSystemCheck implements ApplicationRunner {
     }
 
     private void checkSources() {
-        var results = scrapers.stream()
+        var sourceResults = scrapers.stream()
                 .map(this::check)
                 .toList();
-        var successful = !results.isEmpty() && results.stream().allMatch(SourceCheck::successful);
-        notifier.sendSystemCheck(successful, statusMessage(results));
-        var sourceLabel = results.size() == 1 ? "Quelle" : "Quellen";
+        var results = new ArrayList<>(sourceResults);
+        results.add(checkPriceComparison());
+        var successful = !sourceResults.isEmpty() && results.stream().allMatch(CheckResult::successful);
+        notifier.sendSystemCheck(successful, statusMessage(sourceResults.isEmpty(), results));
+        var sourceLabel = sourceResults.size() == 1 ? "Quelle" : "Quellen";
         if (successful) {
-            LOGGER.info("Systemcheck für {} {} war erfolgreich", results.size(), sourceLabel);
+            LOGGER.info("Systemcheck für {} {} und brettspiel-angebote.de war erfolgreich",
+                    sourceResults.size(), sourceLabel);
         } else {
-            LOGGER.error("Systemcheck für {} {} ist fehlgeschlagen", results.size(), sourceLabel);
+            LOGGER.error("Systemcheck für {} {} und brettspiel-angebote.de ist fehlgeschlagen",
+                    sourceResults.size(), sourceLabel);
         }
     }
 
-    private SourceCheck check(OfferScraper scraper) {
+    private CheckResult check(OfferScraper scraper) {
         var source = scraper.source().getDisplayName();
         try {
             var offers = scraper.scrape();
             return offers.isEmpty()
-                    ? SourceCheck.failed(source, "keine Ergebnisse")
-                    : SourceCheck.successful(source, offers.size());
+                    ? CheckResult.failed(source, "keine Ergebnisse")
+                    : CheckResult.successful(
+                            source,
+                            "%d %s".formatted(offers.size(), offers.size() == 1 ? "Ergebnis" : "Ergebnisse"));
         } catch (RuntimeException exception) {
             LOGGER.error("Systemcheck für {} ist fehlgeschlagen: {}", source, exception.getMessage());
-            return SourceCheck.failed(source, errorMessage(exception));
+            return CheckResult.failed(source, errorMessage(exception));
         }
     }
 
-    private String statusMessage(List<SourceCheck> results) {
+    private CheckResult checkPriceComparison() {
+        try {
+            return priceComparisonService.healthCheck()
+                    ? CheckResult.successful("brettspiel-angebote.de", "Preisdaten für „Scythe“ gefunden")
+                    : CheckResult.failed("brettspiel-angebote.de", "keine Preisdaten für „Scythe“");
+        } catch (RuntimeException exception) {
+            LOGGER.error("Systemcheck für brettspiel-angebote.de ist fehlgeschlagen: {}", exception.getMessage());
+            return CheckResult.failed("brettspiel-angebote.de", errorMessage(exception));
+        }
+    }
+
+    private String statusMessage(boolean noSourcesEnabled, List<CheckResult> results) {
         var lines = new ArrayList<String>();
         lines.add("Commit: " + shortCommitId());
-        if (results.isEmpty()) {
+        if (noSourcesEnabled) {
             lines.add("Keine Quellen aktiviert");
-        } else {
-            results.stream().map(SourceCheck::description).forEach(lines::add);
         }
+        results.stream().map(CheckResult::description).forEach(lines::add);
         return String.join("\n", lines);
     }
 
@@ -104,24 +124,24 @@ public class StartupSystemCheck implements ApplicationRunner {
                 : exception.getMessage();
     }
 
-    private record SourceCheck(String source, int resultCount, String error) {
+    private record CheckResult(String target, String successMessage, String error) {
 
-        private static SourceCheck successful(String source, int resultCount) {
-            return new SourceCheck(source, resultCount, null);
+        private static CheckResult successful(String target, String successMessage) {
+            return new CheckResult(target, successMessage, null);
         }
 
-        private static SourceCheck failed(String source, String error) {
-            return new SourceCheck(source, 0, error);
+        private static CheckResult failed(String target, String error) {
+            return new CheckResult(target, null, error);
         }
 
         private boolean successful() {
-            return error == null && resultCount > 0;
+            return error == null;
         }
 
         private String description() {
             return successful()
-                    ? "%s: %d %s".formatted(source, resultCount, resultCount == 1 ? "Ergebnis" : "Ergebnisse")
-                    : "%s: FEHLER – %s".formatted(source, error);
+                    ? "%s: %s".formatted(target, successMessage)
+                    : "%s: FEHLER – %s".formatted(target, error);
         }
     }
 }
