@@ -12,6 +12,7 @@ public record OfferProperties(
         Schedule schedule,
         SourceHealth sourceHealth,
         boolean initialImport,
+        String commitId,
         Telegram telegram,
         Bgg bgg) {
 

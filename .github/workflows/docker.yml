@@ -32,6 +32,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/jensgiehl/bg-offers:latest
             ghcr.io/jensgiehl/bg-offers:sha-${{ github.sha }}

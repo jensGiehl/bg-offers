@@ -211,6 +211,7 @@ class HttpDocumentClientTest {
                 defaults.schedule(),
                 defaults.sourceHealth(),
                 defaults.initialImport(),
+                defaults.commitId(),
                 defaults.telegram(),
                 defaults.bgg());
     }

@@ -63,6 +63,25 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
     }
 
     @Override
+    public boolean sendSystemCheck(boolean successful, String message) {
+        if (!properties.telegram().configured()) {
+            if (successful) {
+                LOGGER.info("SYSTEMCHECK ERFOLGREICH\n{}", message);
+            } else {
+                LOGGER.error("SYSTEMCHECK FEHLGESCHLAGEN\n{}", message);
+            }
+            return true;
+        }
+        var heading = successful
+                ? "✅ <b>Systemcheck erfolgreich</b>"
+                : "❌ <b>Systemcheck fehlgeschlagen</b>";
+        return send("sendMessage", fields(
+                "chat_id", properties.telegram().chatId(),
+                "text", heading + "\n" + escapeHtml(message),
+                "parse_mode", "HTML"));
+    }
+
+    @Override
     public boolean sendHealthAlert(String message) {
         if (!properties.telegram().configured()) {
             LOGGER.error("QUELLENWARNUNG: {}", message);

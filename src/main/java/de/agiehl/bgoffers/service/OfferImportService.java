@@ -46,6 +46,7 @@ public class OfferImportService {
     private final ActivityLogService activityLogService;
     private final OfferProperties properties;
     private final GameNameNormalizer normalizer;
+    private final ScraperExecutionCoordinator executionCoordinator;
     private final Clock clock;
     private final Instant initialImportEndsAt;
     private final AtomicBoolean running = new AtomicBoolean();
@@ -59,7 +60,8 @@ public class OfferImportService {
             OfferNotifier notifier,
             ActivityLogService activityLogService,
             OfferProperties properties,
-            GameNameNormalizer normalizer) {
+            GameNameNormalizer normalizer,
+            ScraperExecutionCoordinator executionCoordinator) {
         this(
                 scrapers,
                 repository,
@@ -69,7 +71,8 @@ public class OfferImportService {
                 activityLogService,
                 properties,
                 normalizer,
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                executionCoordinator);
     }
 
     OfferImportService(
@@ -82,6 +85,30 @@ public class OfferImportService {
             OfferProperties properties,
             GameNameNormalizer normalizer,
             Clock clock) {
+        this(
+                scrapers,
+                repository,
+                bggLookupService,
+                priceComparisonService,
+                notifier,
+                activityLogService,
+                properties,
+                normalizer,
+                clock,
+                new ScraperExecutionCoordinator());
+    }
+
+    private OfferImportService(
+            List<OfferScraper> scrapers,
+            OfferRepository repository,
+            BggLookupService bggLookupService,
+            PriceComparisonService priceComparisonService,
+            OfferNotifier notifier,
+            ActivityLogService activityLogService,
+            OfferProperties properties,
+            GameNameNormalizer normalizer,
+            Clock clock,
+            ScraperExecutionCoordinator executionCoordinator) {
         this.scrapers = List.copyOf(scrapers);
         this.repository = repository;
         this.bggLookupService = bggLookupService;
@@ -90,6 +117,7 @@ public class OfferImportService {
         this.activityLogService = activityLogService;
         this.properties = properties;
         this.normalizer = normalizer;
+        this.executionCoordinator = executionCoordinator;
         this.clock = clock;
         this.initialImportEndsAt = properties.initialImport()
                 ? Instant.now(clock).plus(INITIAL_IMPORT_NOTIFICATION_PAUSE)
@@ -102,9 +130,7 @@ public class OfferImportService {
             return;
         }
         try {
-            for (var scraper : scrapers) {
-                importSource(scraper);
-            }
+            executionCoordinator.run(() -> scrapers.forEach(this::importSource));
         } finally {
             running.set(false);
         }

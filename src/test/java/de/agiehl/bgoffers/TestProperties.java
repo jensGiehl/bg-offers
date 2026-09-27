@@ -33,6 +33,7 @@ public final class TestProperties {
                         Duration.ofDays(4),
                         Duration.ofDays(30)),
                 initialImport,
+                "0123456789abcdef",
                 new OfferProperties.Telegram("", ""),
                 new OfferProperties.Bgg(""));
     }

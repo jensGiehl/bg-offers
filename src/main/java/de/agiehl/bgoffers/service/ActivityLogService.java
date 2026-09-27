@@ -14,37 +14,45 @@ import java.time.Instant;
 public class ActivityLogService {
 
     private final ActivityLogRepository repository;
+    private final DryRunContext dryRunContext;
     private final Clock clock;
 
     @Autowired
-    public ActivityLogService(ActivityLogRepository repository) {
-        this(repository, Clock.systemUTC());
+    public ActivityLogService(ActivityLogRepository repository, DryRunContext dryRunContext) {
+        this(repository, dryRunContext, Clock.systemUTC());
     }
 
-    ActivityLogService(ActivityLogRepository repository, Clock clock) {
+    ActivityLogService(ActivityLogRepository repository, DryRunContext dryRunContext, Clock clock) {
         this.repository = repository;
+        this.dryRunContext = dryRunContext;
         this.clock = clock;
     }
 
     public void recordOfferFound(Offer offer, Instant occurredAt) {
-        repository.save(ActivityLogEntry.offerFound(offer, occurredAt));
+        save(ActivityLogEntry.offerFound(offer, occurredAt));
     }
 
     public void recordPriceChanged(Offer offer, BigDecimal previousPrice, Instant occurredAt) {
-        repository.save(ActivityLogEntry.priceChanged(offer, previousPrice, occurredAt));
+        save(ActivityLogEntry.priceChanged(offer, previousPrice, occurredAt));
     }
 
     public void recordLookupRetry(Offer offer, String target, int nextAttempt, int maximumAttempts) {
-        repository.save(ActivityLogEntry.lookupRetry(
+        save(ActivityLogEntry.lookupRetry(
                 offer, target, nextAttempt, maximumAttempts, Instant.now(clock)));
     }
 
     public void recordHttpRetry(String target, String reason, int nextAttempt, int maximumAttempts) {
-        repository.save(ActivityLogEntry.httpRetry(
+        save(ActivityLogEntry.httpRetry(
                 target, reason, nextAttempt, maximumAttempts, Instant.now(clock)));
     }
 
     public void recordTelegramDelivery(boolean successful) {
-        repository.save(ActivityLogEntry.telegramDelivery(successful, Instant.now(clock)));
+        save(ActivityLogEntry.telegramDelivery(successful, Instant.now(clock)));
+    }
+
+    private void save(ActivityLogEntry entry) {
+        if (!dryRunContext.active()) {
+            repository.save(entry);
+        }
     }
 }

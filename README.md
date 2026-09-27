@@ -28,6 +28,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - Meldet neue oder preislich veränderte Angebote, wenn sie günstiger als ein aktuell verfügbares Vergleichsangebot sind oder eine der Zusatzquellen keinen Treffer liefert.
 - Verhindert mit einem Fingerabdruck aus Quelle, URL und Preis doppelte Meldungen.
 - Aktualisiert alle Quellen alle fünf Minuten.
+- Ruft beim Anwendungsstart jede aktivierte Quelle testweise vollständig ab, ohne die gefundenen Angebote zu speichern, und meldet Trefferzahlen, Fehler sowie die kurze Commit-ID per Telegram oder im Anwendungslog.
 - Sortiert die Angebotsübersicht absteigend nach der letzten inhaltlichen Aktualisierung.
 - Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
 - Verwendet die Schnellsuche von brettspiel-angebote.de und verkürzt unbekannte Editionsnamen schrittweise, ohne eine abweichende Edition als Treffer zu übernehmen.
@@ -63,6 +64,8 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | Variable | Bedeutung | Standard |
 |---|---|---|
 | `INITIAL_IMPORT` | Unterdrückt Angebotsmeldungen für zwei Stunden nach dem Anwendungsstart | `false` |
+| `STARTUP_SYSTEM_CHECK_ENABLED` | Führt den rein lesenden Quellencheck beim Start aus | `true` |
+| `GIT_COMMIT` | Commit-ID für die Statusmeldung des Start-Systemchecks | `unknown` |
 | `TELEGRAM_BOT_TOKEN` | Token des Telegram-Bots | leer, Ausgabe auf der Konsole |
 | `TELEGRAM_CHAT_ID` | Ziel-Chat oder Kanal | leer, Ausgabe auf der Konsole |
 | `BGG_API_TOKEN` | API-Token für BoardGameGeek | leer, BGG-Status „Nicht konfiguriert“ |
@@ -124,6 +127,8 @@ Normale Meldungen enthalten kompakt Name, Angebotspreis, Verfügbarkeit, verfüg
 
 Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche werden deshalb beim nächsten relevanten Lauf erneut versucht. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung.
 
+Direkt beim Start führt die Anwendung einen rein lesenden Systemcheck aus. Dafür ruft sie jeden aktivierten Scraper einmal vollständig auf und prüft, ob mindestens ein Ergebnis geliefert wird. Die dabei gefundenen Angebote werden weder gespeichert noch angereichert oder als einzelne Angebote gemeldet. Nach Abschluss wird genau eine Statusmeldung mit der Trefferzahl je Quelle, möglichen Fehlern und der siebenstelligen Commit-ID versendet. Ohne Telegram-Konfiguration erscheint dieselbe Meldung im Anwendungslog.
+
 Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Sobald ein betroffener Test wieder erfolgreich ist, folgt genau eine Telegram-Entwarnung. Bleibt der Test erfolgreich, werden keine weiteren Entwarnungen gesendet. Dieser Zustand wird dauerhaft in der Datenbank gespeichert und überlebt Anwendungsneustarts. Schlägt die Zustellung der Entwarnung fehl, wird sie beim nächsten erfolgreichen Lauf erneut versucht. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
 
 ## Docker
@@ -131,8 +136,12 @@ Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-ange
 Das Image wird einschließlich Tests gebaut:
 
 ```bash
-docker build -t bg-offers:local .
+docker build \
+  --build-arg GIT_COMMIT="$(git rev-parse HEAD)" \
+  -t bg-offers:local .
 ```
+
+Beim veröffentlichten Image übergibt der GitHub-Workflow die Commit-ID automatisch an den Build.
 
 Für einen Betrieb mit dem in der GitHub Container Registry veröffentlichten Image kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt.
 
@@ -162,7 +171,7 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 mvn test
 ```
 
-Die Tests prüfen unter anderem alle vier Quellen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
+Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Systemcheck mit Erfolgs-, Leer- und Fehlerfällen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
 

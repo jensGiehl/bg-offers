@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:webtest;DB_CLOSE_DELAY=-1",
         "offers.schedule.initial-delay=24h",
+        "offers.startup-system-check-enabled=false",
         "offers.schedule.crawl-delay=24h"
 })
 @AutoConfigureMockMvc

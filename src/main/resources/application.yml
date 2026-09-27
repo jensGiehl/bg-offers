@@ -23,6 +23,8 @@ server:
 
 offers:
   initial-import: ${INITIAL_IMPORT:false}
+  startup-system-check-enabled: ${STARTUP_SYSTEM_CHECK_ENABLED:true}
+  commit-id: ${GIT_COMMIT:unknown}
   sources:
     spiele-offensive: https://www.spiele-offensive.de/
     spiele-offensive-enabled: ${SPIELE_OFFENSIVE_ENABLED:true}
