@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
+@Primary
 public class HttpDocumentClient implements SessionDocumentClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpDocumentClient.class);

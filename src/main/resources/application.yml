@@ -44,6 +44,10 @@ offers:
     max-attempts: 3
     retry-delay: 750ms
     milan-concurrency: 2
+  price-comparison-browser:
+    headless: ${PRICE_COMPARISON_BROWSER_HEADLESS:false}
+    timeout: ${PRICE_COMPARISON_BROWSER_TIMEOUT:45s}
+    minimum-delay: ${PRICE_COMPARISON_BROWSER_MINIMUM_DELAY:1500ms}
   schedule:
     initial-delay: 15s
     crawl-delay: 5m

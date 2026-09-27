@@ -24,7 +24,6 @@ class PriceComparisonServiceTest {
         var baseUrl = "https://www.brettspiel-angebote.de/";
         var detailUrl = baseUrl + "spiele/scythe/100/";
         var pages = Map.of(
-                baseUrl, document("<main>Startseite</main>", baseUrl),
                 detailUrl, document("""
                         <div itemprop="offers"><meta itemprop="lowPrice" content="44.90"></div>
                         <span data-absolute-bestprice="32.50"></span>
@@ -46,7 +45,6 @@ class PriceComparisonServiceTest {
         assertThat(result.availablePrice()).isEqualByComparingTo(new BigDecimal("44.90"));
         assertThat(result.bestPrice()).isEqualByComparingTo(new BigDecimal("32.50"));
         assertThat(client.requestedUris()).containsExactly(
-                URI.create(baseUrl),
                 URI.create(baseUrl + "quicksearch/?q=Scythe&source=header"),
                 URI.create(detailUrl));
     }
@@ -57,7 +55,6 @@ class PriceComparisonServiceTest {
         var matchingDetailUrl = baseUrl + "spiele/scythe/1163/";
         var otherDetailUrl = baseUrl + "spiele/scythe/999/";
         var pages = Map.of(
-                baseUrl, document("<main>Startseite</main>", baseUrl),
                 otherDetailUrl, document("""
                         <a href="https://boardgamegeek.com/boardgame/999999/scythe">BGG</a>
                         <div itemprop="offers"><meta itemprop="lowPrice" content="65.00"></div>
@@ -83,7 +80,6 @@ class PriceComparisonServiceTest {
         assertThat(result.url()).isEqualTo(matchingDetailUrl);
         assertThat(result.availablePrice()).isEqualByComparingTo("67.95");
         assertThat(client.requestedUris()).containsExactly(
-                URI.create(baseUrl),
                 URI.create(baseUrl + "quicksearch/?q=Scythe&source=header"),
                 URI.create(otherDetailUrl),
                 URI.create(matchingDetailUrl));
@@ -93,7 +89,7 @@ class PriceComparisonServiceTest {
     void returnsNotFoundInsteadOfAssigningAConsiderablyDifferentEdition() {
         var baseUrl = "https://www.brettspiel-angebote.de/";
         var client = new RecordingDocumentClient(
-                Map.of(baseUrl, document("<main>Startseite</main>", baseUrl)),
+                Map.of(),
                 Map.of(
                         baseUrl + "quicksearch/?q=Kingdom+Builder+Anniversary+Edition&source=header", "[]",
                         baseUrl + "quicksearch/?q=Kingdom+Builder+Anniversary&source=header", "[]",
@@ -107,7 +103,6 @@ class PriceComparisonServiceTest {
 
         assertThat(result.status()).isEqualTo(LookupStatus.NOT_FOUND);
         assertThat(client.requestedUris()).containsExactly(
-                URI.create(baseUrl),
                 URI.create(baseUrl + "quicksearch/?q=Kingdom+Builder+Anniversary+Edition&source=header"),
                 URI.create(baseUrl + "quicksearch/?q=Kingdom+Builder+Anniversary&source=header"),
                 URI.create(baseUrl + "quicksearch/?q=Kingdom+Builder&source=header"));

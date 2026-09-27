@@ -7,6 +7,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
@@ -34,7 +35,7 @@ public class PriceComparisonService {
     private final ObjectMapper objectMapper;
 
     public PriceComparisonService(
-            DocumentClient client,
+            @Qualifier("priceComparisonDocumentClient") DocumentClient client,
             OfferProperties properties,
             GameNameNormalizer normalizer,
             ObjectMapper objectMapper) {
@@ -54,7 +55,6 @@ public class PriceComparisonService {
         }
         try {
             var baseUri = properties.sources().priceComparison();
-            client.fetch(baseUri);
             var candidates = findCandidates(baseUri, gameName);
             if (candidates.isEmpty()) {
                 return PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);

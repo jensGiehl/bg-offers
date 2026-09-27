@@ -9,6 +9,7 @@ import java.time.Duration;
 public record OfferProperties(
         Sources sources,
         Http http,
+        PriceComparisonBrowser priceComparisonBrowser,
         Schedule schedule,
         SourceHealth sourceHealth,
         boolean initialImport,
@@ -40,6 +41,9 @@ public record OfferProperties(
             int maxAttempts,
             Duration retryDelay,
             int milanConcurrency) {
+    }
+
+    public record PriceComparisonBrowser(boolean headless, Duration timeout, Duration minimumDelay) {
     }
 
     public record Schedule(Duration initialDelay, Duration crawlDelay, String healthCron) {

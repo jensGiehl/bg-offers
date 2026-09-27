@@ -24,6 +24,7 @@
         <bootstrap.version>5.3.8</bootstrap.version>
         <bootstrap-icons.version>1.13.1</bootstrap-icons.version>
         <thymeleaf-extras.version>3.0.4.RELEASE</thymeleaf-extras.version>
+        <playwright.version>1.63.0</playwright.version>
     </properties>
 
     <repositories>
@@ -59,6 +60,11 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>${jsoup.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${playwright.version}</version>
         </dependency>
         <dependency>
             <groupId>com.github.jensGiehl</groupId>
