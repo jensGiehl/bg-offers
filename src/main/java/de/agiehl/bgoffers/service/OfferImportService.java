@@ -212,7 +212,7 @@ public class OfferImportService {
             }
             activityLogService.recordLookupRetry(
                     offer, "BoardGameGeek", attempt + 1, maximumAttempts);
-            waitBeforeLookupRetry();
+            waitBeforeLookupRetry(offer, "BoardGameGeek", attempt + 1, maximumAttempts);
         }
         return result;
     }
@@ -228,7 +228,7 @@ public class OfferImportService {
             }
             activityLogService.recordLookupRetry(
                     offer, "brettspiel-angebote.de", attempt + 1, maximumAttempts);
-            waitBeforeLookupRetry();
+            waitBeforeLookupRetry(offer, "brettspiel-angebote.de", attempt + 1, maximumAttempts);
         }
         return result;
     }
@@ -254,9 +254,12 @@ public class OfferImportService {
         offer.setEnrichedAt(now);
     }
 
-    private void waitBeforeLookupRetry() {
+    private void waitBeforeLookupRetry(Offer offer, String target, int nextAttempt, int maximumAttempts) {
+        var delay = properties.http().lookupRetryDelay();
+        LOGGER.debug("Recherche für {} bei {} wird nach einem Fehler in {} ms mit Versuch {}/{} fortgesetzt",
+                offer.getName(), target, delay.toMillis(), nextAttempt, maximumAttempts);
         try {
-            Thread.sleep(properties.http().retryDelay());
+            Thread.sleep(delay);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Warten auf erneute Recherche wurde unterbrochen", exception);

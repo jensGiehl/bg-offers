@@ -207,7 +207,8 @@ class HttpDocumentClientTest {
         var defaults = TestProperties.create();
         return new OfferProperties(
                 defaults.sources(),
-                new OfferProperties.Http(Duration.ofSeconds(2), "test", maxAttempts, Duration.ZERO, 1),
+                new OfferProperties.Http(
+                        Duration.ofSeconds(2), "test", maxAttempts, Duration.ZERO, Duration.ZERO, 1),
                 defaults.schedule(),
                 defaults.sourceHealth(),
                 defaults.initialImport(),

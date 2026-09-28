@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PriceComparisonLiveTest {
 
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36";
 
     @Test
     void findsCurrentScythePriceOnBrettspielAngebote() {
@@ -42,6 +42,7 @@ class PriceComparisonLiveTest {
                         Duration.ofSeconds(30),
                         USER_AGENT,
                         1,
+                        Duration.ZERO,
                         Duration.ZERO,
                         1),
                 defaults.schedule(),

@@ -39,6 +39,7 @@ public record OfferProperties(
             String userAgent,
             int maxAttempts,
             Duration retryDelay,
+            Duration lookupRetryDelay,
             int milanConcurrency) {
     }
 

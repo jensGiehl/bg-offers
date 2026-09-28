@@ -5,6 +5,9 @@ import com.sun.net.httpserver.HttpServer;
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.config.OfferProperties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -17,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class PriceComparisonDocumentClientTest {
 
     @Test
@@ -27,6 +31,12 @@ class PriceComparisonDocumentClientTest {
         var searchRequestedWith = new AtomicReference<String>();
         var searchCsrfToken = new AtomicReference<String>();
         var searchXsrfToken = new AtomicReference<String>();
+        var landingAccept = new AtomicReference<String>();
+        var landingFetchDestination = new AtomicReference<String>();
+        var landingUpgrade = new AtomicReference<String>();
+        var searchFetchDestination = new AtomicReference<String>();
+        var searchFetchMode = new AtomicReference<String>();
+        var searchFetchSite = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/quicksearch/", exchange -> {
             searchCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
@@ -34,10 +44,16 @@ class PriceComparisonDocumentClientTest {
             searchRequestedWith.set(exchange.getRequestHeaders().getFirst("X-Requested-With"));
             searchCsrfToken.set(exchange.getRequestHeaders().getFirst("X-CSRF-TOKEN"));
             searchXsrfToken.set(exchange.getRequestHeaders().getFirst("X-XSRF-TOKEN"));
+            searchFetchDestination.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Dest"));
+            searchFetchMode.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Mode"));
+            searchFetchSite.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Site"));
             respond(exchange, 200, "application/json", "[{\"name\":\"Scythe\"}]");
         });
         server.createContext("/", exchange -> {
             landingRequests.incrementAndGet();
+            landingAccept.set(exchange.getRequestHeaders().getFirst("Accept"));
+            landingFetchDestination.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Dest"));
+            landingUpgrade.set(exchange.getRequestHeaders().getFirst("Upgrade-Insecure-Requests"));
             exchange.getResponseHeaders().add("Set-Cookie", "session=landing-session; Path=/; HttpOnly");
             exchange.getResponseHeaders().add("Set-Cookie", "XSRF-TOKEN=xsrf%2Bvalue; Path=/");
             respond(exchange, 200, "text/html; charset=UTF-8", """
@@ -63,6 +79,12 @@ class PriceComparisonDocumentClientTest {
             assertThat(searchRequestedWith).hasValue("XMLHttpRequest");
             assertThat(searchCsrfToken).hasValue("csrf-value");
             assertThat(searchXsrfToken).hasValue("xsrf+value");
+            assertThat(landingAccept.get()).contains("image/avif", "application/signed-exchange");
+            assertThat(landingFetchDestination).hasValue("document");
+            assertThat(landingUpgrade).hasValue("1");
+            assertThat(searchFetchDestination).hasValue("empty");
+            assertThat(searchFetchMode).hasValue("cors");
+            assertThat(searchFetchSite).hasValue("same-origin");
         } finally {
             server.stop(0);
         }
@@ -75,6 +97,26 @@ class PriceComparisonDocumentClientTest {
         assertThatThrownBy(() -> client.fetch(URI.create("https://example.org/")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("konfigurierten Ursprung");
+    }
+
+    @Test
+    void logsThatAForbiddenResponseOccurredWhileLoadingTheLandingPage(CapturedOutput output) throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/", exchange -> respond(exchange, 403, "text/html", "Forbidden"));
+        server.start();
+        try {
+            var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
+            var client = new PriceComparisonDocumentClient(properties(baseUri));
+
+            assertThatThrownBy(() -> client.fetchJson(baseUri.resolve("quicksearch/?q=Scythe&source=header")))
+                    .isInstanceOf(SourceAccessException.class)
+                    .hasMessageContaining("HTTP 403");
+            assertThat(output.getOut())
+                    .contains("Typ=Startseite")
+                    .contains("HTTP=403");
+        } finally {
+            server.stop(0);
+        }
     }
 
     private OfferProperties properties(URI priceComparisonUri) {
@@ -90,7 +132,8 @@ class PriceComparisonDocumentClientTest {
                         sources.unknownsPassword(),
                         sources.bggMarket(),
                         priceComparisonUri),
-                new OfferProperties.Http(Duration.ofSeconds(2), "test", 1, Duration.ZERO, 1),
+                new OfferProperties.Http(
+                        Duration.ofSeconds(2), "test", 1, Duration.ZERO, Duration.ZERO, 1),
                 defaults.schedule(),
                 defaults.sourceHealth(),
                 defaults.initialImport(),

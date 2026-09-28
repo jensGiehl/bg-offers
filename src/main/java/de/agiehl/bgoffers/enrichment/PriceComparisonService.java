@@ -72,9 +72,13 @@ public class PriceComparisonService {
     }
 
     private List<PriceCandidate> findCandidates(URI baseUri, String gameName) {
-        for (var searchTerm : searchTerms(gameName)) {
+        var searchTerms = searchTerms(gameName);
+        for (var index = 0; index < searchTerms.size(); index++) {
+            var searchTerm = searchTerms.get(index);
             var encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
             var searchUri = baseUri.resolve("quicksearch/?q=" + encodedTerm + "&source=header");
+            LOGGER.debug("Preisvergleich für {}: Schnellsuche {}/{} mit Suchbegriff '{}'", gameName,
+                    index + 1, searchTerms.size(), searchTerm);
             var root = objectMapper.readTree(client.fetchJson(searchUri));
             if (!root.isArray()) {
                 throw new IllegalStateException("Die Preisvergleichssuche lieferte keine Ergebnisliste");
@@ -91,6 +95,8 @@ public class PriceComparisonService {
                     candidates.add(new PriceCandidate(name, baseUri.resolve(url), score));
                 }
             }
+            LOGGER.debug("Preisvergleich für {}: Schnellsuche {}/{} lieferte {} passende Kandidaten",
+                    gameName, index + 1, searchTerms.size(), candidates.size());
             if (!candidates.isEmpty()) {
                 return candidates.stream()
                         .sorted(Comparator.comparingDouble(PriceCandidate::score).reversed())
@@ -118,7 +124,12 @@ public class PriceComparisonService {
         var bestCandidate = candidates.getFirst();
         Document bestCandidatePage = null;
         if (expectedBggId != null) {
-            for (var candidate : candidates.stream().limit(MAXIMUM_BGG_CANDIDATES).toList()) {
+            var candidatesToCheck = candidates.stream().limit(MAXIMUM_BGG_CANDIDATES).toList();
+            for (var index = 0; index < candidatesToCheck.size(); index++) {
+                var candidate = candidatesToCheck.get(index);
+                LOGGER.debug(
+                        "Preisvergleich: Detailseite {}/{} für Kandidat '{}' wird zur Prüfung der BGG-ID {} geladen: {}",
+                        index + 1, candidatesToCheck.size(), candidate.name(), expectedBggId, candidate.uri());
                 var detailPage = client.fetch(candidate.uri());
                 if (candidate.equals(bestCandidate)) {
                     bestCandidatePage = detailPage;
@@ -129,6 +140,8 @@ public class PriceComparisonService {
             }
         }
         if (bestCandidatePage == null) {
+            LOGGER.debug("Preisvergleich: Detailseite für besten Kandidaten '{}' wird geladen: {}",
+                    bestCandidate.name(), bestCandidate.uri());
             bestCandidatePage = client.fetch(bestCandidate.uri());
         }
         return priceResult(bestCandidate, bestCandidatePage);
