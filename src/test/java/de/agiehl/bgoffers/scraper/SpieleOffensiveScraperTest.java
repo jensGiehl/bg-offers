@@ -79,6 +79,37 @@ class SpieleOffensiveScraperTest {
     }
 
     @Test
+    void readsRegularPriceAndAvailabilityFromProductDetailPage() {
+        var productUrl = BASE + "Spiel/Yonder-Ein-fantastisches-Aufbauspiel-1032859.html";
+        var landingPage = document("""
+                <div id="wrapper_startseite">
+                  <a href="%s" onclick="registerPromotionSelection(dataLayer, 29134, `Promo`, `so startseite`, 1032859, `Yonder - Ein fantastisches Aufbauspiel`, 79.99);">
+                    <img src="/yonder.jpg">
+                  </a>
+                </div>
+                """.formatted(productUrl), BASE);
+        var detailPage = document("""
+                <h1>Yonder - Ein fantastisches Aufbauspiel</h1>
+                <div>
+                  <div>versandkostenfrei in Deutschland auf Lager oder später</div>
+                  <div class="sellw"></div>
+                </div>
+                <div class="preis">nur <span>79</span>,<span>99</span> €</div>
+                """, productUrl);
+        var scraper = new SpieleOffensiveScraper(
+                new MapDocumentClient(Map.of(productUrl, detailPage)),
+                TestProperties.create());
+
+        var offers = scraper.parseLandingPage(landingPage);
+
+        assertThat(offers).singleElement().satisfies(offer -> {
+            assertThat(offer.name()).isEqualTo("Yonder - Ein fantastisches Aufbauspiel");
+            assertThat(offer.price()).isEqualByComparingTo(new BigDecimal("79.99"));
+            assertThat(offer.availability()).isEqualTo("auf Lager");
+        });
+    }
+
+    @Test
     void usesBannerDataWhenAProductDetailCannotBeLoaded() {
         var url = BASE + "Spiel/Fallback-42.html";
         var landingPage = document("""

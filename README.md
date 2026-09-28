@@ -7,7 +7,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 ## Funktionsumfang
 
 - Liest die Banner innerhalb von `#wrapper_startseite` auf Spiele-Offensive aus.
-- Lädt für normale Angebote und Gruppendeals die Detailseite, um Name, Preis, Verfügbarkeit und die Gruppendeal-Restmenge zu bestimmen. Bei Gruppendeals wird der tatsächlich an den Warenkorb übergebene Preis verwendet, sodass Trostangebote und optionale VIP-Upgrades nicht als Dealpreis erkannt werden.
+- Lädt für normale Angebote und Gruppendeals die Detailseite, um Name, regulären oder reduzierten Preis, Verfügbarkeit und die Gruppendeal-Restmenge zu bestimmen. Bei Gruppendeals wird der tatsächlich an den Warenkorb übergebene Preis verwendet, sodass Trostangebote und optionale VIP-Upgrades nicht als Dealpreis erkannt werden.
 - Berücksichtigt den vom Server gemeldeten HTML-Zeichensatz, damit deutsche Umlaute korrekt übernommen werden.
 - Verwendet bei dynamisch aufgebauten Spiele-Offensive-Bannern das eingebettete Produktbild statt der dekorativen `display_angebot`-Ebene.
 - Behandelt Spieleschmiede-Banner ohne BGG- und Preisvergleich und versendet bei konfiguriertem Telegram nur das Bild.

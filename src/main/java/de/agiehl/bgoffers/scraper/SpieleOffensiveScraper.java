@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 public class SpieleOffensiveScraper implements OfferScraper {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SpieleOffensiveScraper.class);
-    private static final Pattern CURRENT_PRICE = Pattern.compile("(?i)jetzt\\s+nur\\s*([\\d.,]+)\\s*€");
+    private static final Pattern CURRENT_PRICE = Pattern.compile("(?i)(?:jetzt\\s+)?nur\\s*([\\d.,]+)\\s*€");
     private static final Pattern BANNER_DATA = Pattern.compile(",\\s*`([^`]*)`\\s*,\\s*([0-9]+(?:\\.[0-9]+)?)\\s*\\)\\s*;?");
     private static final Pattern QUANTITY = Pattern.compile("(?i)Noch\\s+verfügbar\\s+(\\d+)\\s+von\\s+(\\d+)");
     private static final Pattern GROUP_DEAL_PRICE_FIELD = Pattern.compile("uebergabe\\[\\d+\\]\\[3\\]");
