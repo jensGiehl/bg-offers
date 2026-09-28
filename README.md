@@ -44,6 +44,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - `curl` 7.84 oder neuer im Suchpfad; im Docker-Image ist es bereits enthalten
 - Optional: Telegram-Bot und Chat-ID
 - Optional, aber für BGG-Daten erforderlich: persönlicher BGG-API-Token
+- Bei einem Betrieb auf einem Cloud-Server: ein VPN mit einer nicht als Cloud-/Rechenzentrums-IP erkannten Ausgangsadresse, zum Beispiel ein WireGuard-Tunnel zur eigenen FRITZ!Box. brettspiel-angebote.de scheint Zugriffe von Cloud-IPs zu sperren.
 
 ## Lokal starten
 
@@ -168,6 +169,71 @@ docker run -d \
 ```
 
 Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. Wer das lokal gebaute Image statt eines Registry-Images verwendet, ersetzt die letzte Zeile durch `bg-offers:local` und entfernt `--pull=always`.
+
+### Docker über VPN beziehungsweise WireGuard betreiben
+
+brettspiel-angebote.de scheint Anfragen von typischen Cloud- und Rechenzentrums-IPs zu sperren. Läuft `bg-offers` auf einem Cloud-Server, sollte der gesamte ausgehende Netzwerkverkehr des Anwendungscontainers deshalb über ein VPN geführt werden. Besonders geeignet ist ein WireGuard-Tunnel zur eigenen FRITZ!Box: Die Abrufe verlassen das Internet dann über den heimischen Anschluss. Läuft Docker bereits zu Hause hinter dieser FRITZ!Box, ist kein zusätzlicher Tunnel erforderlich.
+
+In der FRITZ!Box wird unter **Internet → Freigaben → VPN (WireGuard) → WireGuard-Verbindung hinzufügen → Einzelgerät verbinden** eine eigene Verbindung für den Docker-Host angelegt. Anschließend wird die Konfigurationsdatei heruntergeladen. Die FRITZ!Box benötigt dafür eine öffentliche IPv4-Adresse oder eine per IPv6 erreichbare Verbindung; der Docker-Host muss das jeweilige Protokoll ebenfalls nutzen können. Eine ausführliche Anleitung bietet [FRITZ!](https://fritz.com/apps/knowledge-base/FRITZ-Box-7682/3685_WireGuard-VPN-zur-FRITZ-Box-am-Computer-einrichten).
+
+Die heruntergeladene Datei enthält einen privaten Schlüssel und darf weder veröffentlicht noch in Git eingecheckt werden. Auf dem Linux-Docker-Host wird sie beispielsweise so abgelegt:
+
+```bash
+sudo install -d -o "$(id -u)" -g "$(id -g)" -m 700 \
+  /opt/bg-offers-wireguard/wg_confs
+install -m 600 /pfad/zur/heruntergeladenen-fritzbox.conf \
+  /opt/bg-offers-wireguard/wg_confs/wg0.conf
+```
+
+In `wg0.conf` muss `AllowedIPs` den Wert `0.0.0.0/0` enthalten, damit der gesamte IPv4-Verkehr von `bg-offers` durch den Tunnel läuft. Falls die exportierte Datei zusätzlich `::/0` enthält, der Docker-Host oder Anschluss aber kein funktionierendes IPv6 unterstützt, sollte `::/0` entfernt werden.
+
+Das folgende Beispiel startet zuerst einen WireGuard-Client und anschließend `bg-offers` in dessen Netzwerk-Namespace. Deshalb wird `8089:8080` am WireGuard-Container veröffentlicht und am Anwendungscontainer weder `-p` noch ein eigenes Docker-Netzwerk angegeben. `8089` ist der Port auf dem Host; die Anwendung lauscht im gemeinsamen Netzwerk-Namespace weiterhin auf Port `8080`.
+
+```bash
+docker rm -f bg-offers bg-offers-wireguard 2>/dev/null
+
+docker run -d \
+  --name bg-offers-wireguard \
+  --pull=always \
+  --cap-add=NET_ADMIN \
+  --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+  -e PUID="$(id -u)" \
+  -e PGID="$(id -g)" \
+  -e TZ="Europe/Berlin" \
+  -v /opt/bg-offers-wireguard:/config \
+  -p 8089:8080 \
+  --restart unless-stopped \
+  lscr.io/linuxserver/wireguard:latest
+
+docker run -d \
+  --name bg-offers \
+  --pull=always \
+  --init \
+  --network container:bg-offers-wireguard \
+  -v "$(pwd)/data:/app/data" \
+  -e INITIAL_IMPORT="false" \
+  -e BGG_MARKET_ENABLED="true" \
+  -e BGG_API_TOKEN="BGG_TOKEN" \
+  -e TELEGRAM_BOT_TOKEN="BOT_TOKEN" \
+  -e TELEGRAM_CHAT_ID="CHAT_ID" \
+  -e UNKNOWNS_USERNAME="BENUTZERNAME_ODER_EMAIL" \
+  -e UNKNOWNS_PASSWORD="PASSWORT" \
+  --restart unless-stopped \
+  ghcr.io/jensgiehl/bg-offers:latest
+```
+
+Auf aktuellen Linux-Kerneln ist das WireGuard-Modul üblicherweise bereits vorhanden. Meldet der WireGuard-Container ein fehlendes Kernelmodul, können zusätzlich `--cap-add=SYS_MODULE` und `-v /lib/modules:/lib/modules:ro` gesetzt werden. Weitere Details zum Client-Modus enthält die [Dokumentation des verwendeten WireGuard-Images](https://docs.linuxserver.io/images/docker-wireguard/).
+
+Der Tunnel und die verwendete öffentliche Ausgangs-IP lassen sich anschließend prüfen:
+
+```bash
+docker exec bg-offers-wireguard wg show
+docker exec bg-offers curl -fsS https://api.ipify.org
+```
+
+Die zweite Ausgabe sollte der öffentlichen IP des heimischen FRITZ!Box-Anschlusses entsprechen. Wird der WireGuard-Container ersetzt oder neu gestartet, sollte anschließend auch `bg-offers` neu gestartet werden, damit der gemeinsam verwendete Netzwerk-Namespace sicher zum aktuellen Container gehört. Die Web-Oberfläche bleibt auf dem Docker-Host unter `http://localhost:8089` erreichbar.
+
+Statt einer FRITZ!Box kann die WireGuard-Konfiguration eines VPN-Anbieters auf dieselbe Weise als `wg0.conf` verwendet werden. Der Anbieter muss einen vollständigen Tunnel erlauben, und dessen Ausgangs-IP darf von brettspiel-angebote.de nicht ebenfalls gesperrt sein. Der komplette ausgehende Verkehr von `bg-offers` – einschließlich Telegram, BoardGameGeek und aller weiteren Quellen – läuft in dieser Variante über das VPN.
 
 ## Tests
 
