@@ -114,6 +114,37 @@ class SpieleOffensiveScraperTest {
     }
 
     @Test
+    void omitsMinimumOrderNoticeFromAvailability() {
+        var productUrl = BASE + "Spiel/Ausverkauft-Frosted-Games-1030326.html";
+        var landingPage = document("""
+                <div id="wrapper_startseite">
+                  <a href="%s"><img src="/ausverkauft.jpg"></a>
+                </div>
+                """.formatted(productUrl), BASE);
+        var detailPage = document("""
+                <h1>Ausverkauft (Frosted Games)</h1>
+                <div>
+                  <div>
+                    versandkostenfrei in Deutschland
+                    (59 € Mindestbestellwert, darunter 4,90 € Mindermengenzuschlag)
+                    nur noch 1 Stück auf Lager Lieferzeit 1-3 Tage, max. 1 Woche.
+                  </div>
+                  <div class="sellw"></div>
+                </div>
+                <div class="preis">jetzt nur 4,99 €</div>
+                """, productUrl);
+        var scraper = new SpieleOffensiveScraper(
+                new MapDocumentClient(Map.of(productUrl, detailPage)),
+                TestProperties.create());
+
+        var offers = scraper.parseLandingPage(landingPage);
+
+        assertThat(offers).singleElement().satisfies(offer ->
+                assertThat(offer.availability())
+                        .isEqualTo("nur noch 1 Stück auf Lager Lieferzeit 1-3 Tage, max. 1 Woche."));
+    }
+
+    @Test
     void usesBannerDataWhenAProductDetailCannotBeLoaded() {
         var url = BASE + "Spiel/Fallback-42.html";
         var landingPage = document("""
