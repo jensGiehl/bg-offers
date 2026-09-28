@@ -2,7 +2,7 @@
 
 BG Offers sammelt Brettspielangebote von Spiele-Offensive, Milan-Spiele und dem BGG Market sowie neue Themen aus dem Schnäppchenforum von unknowns.de. Shop- und Market-Angebote werden mit BoardGameGeek- und Vergleichspreisdaten angereichert; unknowns.de-Themen werden ausschließlich mit Titel und Link gespeichert und gemeldet. Ein dauerhaftes Activity Log macht diese Abläufe auch in der Web-Oberfläche nachvollziehbar. Ohne Telegram-Konfiguration werden dieselben Meldungen im Anwendungslog ausgegeben.
 
-Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Playwright mit Chromium, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
+Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
 
 ## Funktionsumfang
 
@@ -32,7 +32,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Playw
 - Sortiert die Angebotsübersicht absteigend nach der letzten inhaltlichen Aktualisierung.
 - Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
 - Verwendet die Schnellsuche von brettspiel-angebote.de und verkürzt unbekannte Editionsnamen schrittweise, ohne eine abweichende Edition als Treffer zu übernehmen.
-- Ruft brettspiel-angebote.de in einer dauerhaften Chromium-Sitzung mit JavaScript und Cookies ab. Zwischen Browseraktionen liegt standardmäßig mindestens 1,5 Sekunden Pause.
+- Ruft vor der ersten Suche die Startseite von brettspiel-angebote.de über eine eigene Jsoup-Session auf. Cookies und vorhandene CSRF-Tokens werden für Schnellsuche und Detailseiten in derselben Session übernommen.
 - Prüft täglich um 08:00 Uhr Europe/Berlin mit „Scythe“, ob brettspiel-angebote.de weiterhin auswertbar ist.
 - Prüft im selben täglichen Lauf mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können. Nach einem fehlgeschlagenen Test wird beim ersten wieder erfolgreichen Lauf einmalig eine Entwarnung gesendet; weitere erfolgreiche Läufe bleiben still, bis erneut ein Fehler auftritt.
 
@@ -40,7 +40,6 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Playw
 
 - JDK 25
 - Maven 3.9 oder neuer
-- Chromium für Playwright; im Docker-Image ist es bereits enthalten
 - Optional: Telegram-Bot und Chat-ID
 - Optional, aber für BGG-Daten erforderlich: persönlicher BGG-API-Token
 
@@ -48,9 +47,6 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Playw
 
 ```bash
 mvn clean package
-mvn org.codehaus.mojo:exec-maven-plugin:3.6.3:java \
-  -Dexec.mainClass=com.microsoft.playwright.CLI \
-  -Dexec.args="install chromium"
 java -jar target/bg-offers-0.0.1-SNAPSHOT.jar
 ```
 
@@ -60,7 +56,7 @@ Alternativ:
 mvn spring-boot:run
 ```
 
-Der erste Abruf beginnt 15 Sekunden nach dem Start. Beim lokalen Betrieb öffnet der Preisvergleich Chromium sichtbar, weil die Schutzprüfung von brettspiel-angebote.de den Headless-Modus derzeit abweist. Im Docker-Image läuft derselbe sichtbare Browser auf einem virtuellen X-Display und benötigt deshalb kein Desktop-Fenster. Die H2-Dateien werden standardmäßig im Verzeichnis `./data` abgelegt. Flyway erstellt das Datenbankschema beim ersten Start und führt ausstehende Migrationen aus `src/main/resources/db/migration` automatisch aus. Eine bereits von einer älteren Version angelegte Datenbank wird beim ersten Start mit Flyway als Version 1 registriert und unverändert weiterverwendet. Hibernate validiert das migrierte Schema beim Start, nimmt aber selbst keine Schemaänderungen mehr vor.
+Der erste Abruf beginnt 15 Sekunden nach dem Start. Die H2-Dateien werden standardmäßig im Verzeichnis `./data` abgelegt. Flyway erstellt das Datenbankschema beim ersten Start und führt ausstehende Migrationen aus `src/main/resources/db/migration` automatisch aus. Eine bereits von einer älteren Version angelegte Datenbank wird beim ersten Start mit Flyway als Version 1 registriert und unverändert weiterverwendet. Hibernate validiert das migrierte Schema beim Start, nimmt aber selbst keine Schemaänderungen mehr vor.
 
 ## Konfiguration
 
@@ -88,9 +84,6 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | `DB_USER` | H2-Benutzer | `sa` |
 | `DB_PASSWORD` | H2-Passwort | leer |
 | `SERVER_PORT` | HTTP-Port der Anwendung | `8080` |
-| `PRICE_COMPARISON_BROWSER_HEADLESS` | Startet Chromium ohne sichtbare Oberfläche; wird von der Zielseite derzeit abgewiesen | `false` |
-| `PRICE_COMPARISON_BROWSER_TIMEOUT` | Maximale Dauer einer Browsernavigation oder Schutzprüfung | `45s` |
-| `PRICE_COMPARISON_BROWSER_MINIMUM_DELAY` | Mindestabstand zwischen zwei Browseraktionen | `1500ms` |
 
 ### Telegram-Bot-Token und Chat-ID ermitteln
 
@@ -113,7 +106,7 @@ curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"
 
 Sie steht in der Antwort unter `result.id`. Der Bot-Token ist ein Zugangsschlüssel und darf weder in die Versionsverwaltung noch in Logs oder Screenshots gelangen. Falls er offengelegt wurde, kann er über BotFather widerrufen und neu erzeugt werden.
 
-Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen. Die Chromium-Sitzung ist ausschließlich auf den konfigurierten Ursprung von brettspiel-angebote.de beschränkt und wird nicht zwischen Anwendungsstarts gespeichert.
+Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Standardmäßig werden temporäre HTTP- und Recherchefehler bis zu dreimal mit 750 Millisekunden Pause versucht und höchstens zwei Milan-Detailseiten gleichzeitig geladen. Die Jsoup-Sitzung für brettspiel-angebote.de ist ausschließlich auf den konfigurierten Ursprung beschränkt und wird nicht zwischen Anwendungsstarts gespeichert.
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
 
@@ -151,7 +144,7 @@ docker build \
 
 Beim veröffentlichten Image übergibt der GitHub-Workflow die Commit-ID automatisch an den Build.
 
-Für einen Betrieb mit dem in der GitHub Container Registry veröffentlichten Image kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt. Das Image enthält Chromium und startet es über ein virtuelles X-Display. `--ipc=host` stellt Chromium ausreichend Shared Memory bereit.
+Für einen Betrieb mit dem in der GitHub Container Registry veröffentlichten Image kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt.
 
 ```bash
 docker rm -f bg-offers 2>/dev/null
@@ -160,7 +153,6 @@ docker run -d \
   --name bg-offers \
   --pull=always \
   --init \
-  --ipc=host \
   -p 8089:8080 \
   -v "$(pwd)/data:/app/data" \
   -e INITIAL_IMPORT="false" \
@@ -181,8 +173,22 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 mvn test
 ```
 
+Der echte Live-Test sucht „Scythe“ direkt auf brettspiel-angebote.de und erwartet einen positiven verfügbaren Preis. Er ist standardmäßig deaktiviert, damit ein externer Ausfall den normalen Build nicht fehlschlagen lässt:
+
+```bash
+RUN_LIVE_PRICE_COMPARISON_TEST=true mvn -Dtest=PriceComparisonLiveTest test
+```
+
+Unter PowerShell:
+
+```powershell
+$env:RUN_LIVE_PRICE_COMPARISON_TEST="true"
+mvn -Dtest=PriceComparisonLiveTest test
+Remove-Item Env:RUN_LIVE_PRICE_COMPARISON_TEST
+```
+
 Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Systemcheck mit Erfolgs-, Leer- und Fehlerfällen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Suchablauf über die Schnellsuche, die Verkürzung unbekannter Editionsnamen, die Auswahl aus mehreren Scythe-Treffern anhand der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
 
-Die Anwendung wertet HTML-Seiten und die öffentlich von der Seitensuche verwendete JSON-Antwort aus. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können einzelne Abrufe fehlschlagen. Solche Fehler werden protokolliert; für brettspiel-angebote.de und BoardGameGeek gibt es zusätzlich tägliche Prüfungen mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.
+Die Anwendung wertet HTML-Seiten und die öffentlich von der Seitensuche verwendete JSON-Antwort aus. Jsoup führt kein JavaScript aus; verlangt ein vorgeschalteter Schutzdienst eine JavaScript-Prüfung, wird der Abruf deshalb als technischer Fehler protokolliert. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können ebenfalls einzelne Abrufe fehlschlagen. Für brettspiel-angebote.de und BoardGameGeek gibt es zusätzlich tägliche Prüfungen mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.

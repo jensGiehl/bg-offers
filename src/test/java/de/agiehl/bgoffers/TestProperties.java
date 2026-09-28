@@ -26,7 +26,6 @@ public final class TestProperties {
                         URI.create("https://api.geekdo.com/api/market/products?pageid=1"),
                         URI.create("https://www.brettspiel-angebote.de/")),
                 new OfferProperties.Http(Duration.ofSeconds(5), "test", 3, Duration.ZERO, 2),
-                new OfferProperties.PriceComparisonBrowser(false, Duration.ofSeconds(5), Duration.ZERO),
                 new OfferProperties.Schedule(Duration.ZERO, Duration.ofMinutes(5), "0 0 8 * * *"),
                 new OfferProperties.SourceHealth(
                         Duration.ofDays(4),

@@ -40,14 +40,10 @@ offers:
     price-comparison: https://www.brettspiel-angebote.de/
   http:
     timeout: 30s
-    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36
+    user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36
     max-attempts: 3
     retry-delay: 750ms
     milan-concurrency: 2
-  price-comparison-browser:
-    headless: ${PRICE_COMPARISON_BROWSER_HEADLESS:false}
-    timeout: ${PRICE_COMPARISON_BROWSER_TIMEOUT:45s}
-    minimum-delay: ${PRICE_COMPARISON_BROWSER_MINIMUM_DELAY:1500ms}
   schedule:
     initial-delay: 15s
     crawl-delay: 5m
