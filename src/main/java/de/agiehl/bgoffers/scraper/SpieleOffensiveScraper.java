@@ -32,6 +32,9 @@ public class SpieleOffensiveScraper implements OfferScraper {
     private static final Pattern BANNER_DATA = Pattern.compile(",\\s*`([^`]*)`\\s*,\\s*([0-9]+(?:\\.[0-9]+)?)\\s*\\)\\s*;?");
     private static final Pattern QUANTITY = Pattern.compile("(?i)Noch\\s+verfügbar\\s+(\\d+)\\s+von\\s+(\\d+)");
     private static final Pattern GROUP_DEAL_PRICE_FIELD = Pattern.compile("uebergabe\\[\\d+\\]\\[3\\]");
+    private static final Pattern DELIVERY_TIME_NOTICE = Pattern.compile(
+            "(?i)\\*?Bitte\\s+beachten\\s+Sie\\s+unseren(?:\\s|&#x20;)*\\*?\\[?\\*?"
+                    + "Hinweis\\s+zu\\s+Lieferzeiten\\*?]?(?:\\(https?://[^)]*/Versandkosten\\))?");
 
     private final DocumentClient client;
     private final OfferProperties properties;
@@ -206,6 +209,7 @@ public class SpieleOffensiveScraper implements OfferScraper {
         if (markerIndex >= 0) {
             text = text.substring(markerIndex + marker.length()).trim();
         }
+        text = DELIVERY_TIME_NOTICE.matcher(text).replaceAll("").trim();
         var endIndex = text.indexOf(" oder ");
         if (endIndex >= 0) {
             text = text.substring(0, endIndex).trim();

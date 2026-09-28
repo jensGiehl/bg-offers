@@ -91,7 +91,11 @@ class SpieleOffensiveScraperTest {
         var detailPage = document("""
                 <h1>Yonder - Ein fantastisches Aufbauspiel</h1>
                 <div>
-                  <div>versandkostenfrei in Deutschland auf Lager oder später</div>
+                  <div>
+                    versandkostenfrei in Deutschland
+                    *Bitte beachten Sie unseren&amp;#x20;*[*Hinweis zu Lieferzeiten*](https://www.spiele-offensive.de/Versandkosten)
+                    auf Lager oder später
+                  </div>
                   <div class="sellw"></div>
                 </div>
                 <div class="preis">nur <span>79</span>,<span>99</span> €</div>
