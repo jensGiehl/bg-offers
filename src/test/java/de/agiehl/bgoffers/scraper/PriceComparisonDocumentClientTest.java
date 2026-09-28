@@ -113,7 +113,10 @@ class PriceComparisonDocumentClientTest {
                     .hasMessageContaining("HTTP 403");
             assertThat(output.getOut())
                     .contains("Typ=Startseite")
-                    .contains("HTTP=403");
+                    .contains("HTTP=403")
+                    .contains("Ziel-IP=")
+                    .contains("IP-Version=")
+                    .contains("Protokoll=HTTP/");
         } finally {
             server.stop(0);
         }

@@ -117,15 +117,17 @@ public class PriceComparisonDocumentClient implements DocumentClient {
                 var contentType = response.contentType() == null ? "unbekannt" : response.contentType();
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     LOGGER.debug(
-                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Content-Type={}, Bytes={}",
+                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Ziel-IP={}, IP-Version={}, Protokoll=HTTP/{}, Content-Type={}, Bytes={}",
                             requestType.displayName(), attempt, attempts, response.statusCode(), uri,
-                            responseUri, duration, contentType, response.body().length);
+                            responseUri, duration, valueOrUnknown(response.remoteAddress()), response.ipVersion(),
+                            valueOrUnknown(response.httpVersion()), contentType, response.body().length);
                     return response;
                 }
                 LOGGER.warn(
-                        "Preisvergleichsabruf fehlgeschlagen: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Server={}, Content-Type={}, Titel={}, Bytes={}",
+                        "Preisvergleichsabruf fehlgeschlagen: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Ziel-IP={}, IP-Version={}, Protokoll=HTTP/{}, Server={}, Content-Type={}, Titel={}, Bytes={}",
                         requestType.displayName(), attempt, attempts, response.statusCode(), uri,
-                        responseUri, duration, response.server() == null ? "unbekannt" : response.server(), contentType,
+                        responseUri, duration, valueOrUnknown(response.remoteAddress()), response.ipVersion(),
+                        valueOrUnknown(response.httpVersion()), valueOrUnknown(response.server()), contentType,
                         responseTitle(response), response.body().length);
                 rejectChallengeResponse(uri, response);
                 if (!isRetryable(response.statusCode()) || attempt == attempts) {
@@ -261,6 +263,10 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             return "unbekannt";
         }
         return title.substring(0, Math.min(120, title.length()));
+    }
+
+    private String valueOrUnknown(String value) {
+        return value == null || value.isBlank() ? "unbekannt" : value;
     }
 
     private void resetSession(SourceAccessException exception) {

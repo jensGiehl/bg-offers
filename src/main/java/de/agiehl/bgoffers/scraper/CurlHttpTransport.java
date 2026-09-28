@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit;
 
 final class CurlHttpTransport implements AutoCloseable {
 
-    private static final String METADATA_FORMAT = "%{http_code}\t%{url_effective}\t%{content_type}\t%header{server}";
+    private static final String METADATA_FORMAT =
+            "%{http_code}\t%{url_effective}\t%{content_type}\t%header{server}\t%{remote_ip}\t%{http_version}";
 
     private final OfferProperties properties;
     private Path cookieFile;
@@ -154,8 +155,8 @@ final class CurlHttpTransport implements AutoCloseable {
 
     private Response response(String metadata, byte[] body) throws IOException {
         var fields = metadata.split("\\t", -1);
-        if (fields.length != 4) {
-            throw new IOException("curl lieferte %d statt 4 Antwortmetadaten".formatted(fields.length));
+        if (fields.length != 6) {
+            throw new IOException("curl lieferte %d statt 6 Antwortmetadaten".formatted(fields.length));
         }
         try {
             return new Response(
@@ -163,13 +164,29 @@ final class CurlHttpTransport implements AutoCloseable {
                     URI.create(fields[1]),
                     fields[2].isBlank() ? null : fields[2],
                     fields[3].isBlank() ? null : fields[3],
+                    fields[4].isBlank() ? null : fields[4],
+                    fields[5].isBlank() ? null : fields[5],
                     body);
         } catch (IllegalArgumentException exception) {
             throw new IOException("curl lieferte ungültige Antwortmetadaten", exception);
         }
     }
 
-    record Response(int statusCode, URI uri, String contentType, String server, byte[] body) {
+    record Response(
+            int statusCode,
+            URI uri,
+            String contentType,
+            String server,
+            String remoteAddress,
+            String httpVersion,
+            byte[] body) {
+
+        String ipVersion() {
+            if (remoteAddress == null) {
+                return "unbekannt";
+            }
+            return remoteAddress.contains(":") ? "IPv6" : "IPv4";
+        }
 
         String bodyAsString() {
             return new String(body, StandardCharsets.UTF_8);
