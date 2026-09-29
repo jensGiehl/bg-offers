@@ -106,6 +106,7 @@ final class CurlHttpTransport implements AutoCloseable {
                 "curl",
                 "--silent",
                 "--show-error",
+                "--http1.1",
                 "--connect-timeout", timeoutSeconds,
                 "--max-time", timeoutSeconds,
                 "--output", responseFile.toString(),
