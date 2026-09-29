@@ -111,7 +111,8 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             LOGGER.debug("Preisvergleichsabruf startet: Typ={}, Versuch={}/{}, URI={}",
                     requestType.displayName(), attempt, attempts, uri);
             try {
-                var response = transport.get(uri, accept, referer, ajaxRequest, headers);
+                var response = transport.get(
+                        uri, accept, referer, ajaxRequest, headers, requestType.httpProtocol());
                 var duration = elapsedMillis(startedAt);
                 var responseUri = response.uri();
                 var contentType = response.contentType() == null ? "unbekannt" : response.contentType();
@@ -282,18 +283,24 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     }
 
     private enum RequestType {
-        LANDING_PAGE("Startseite"),
-        QUICK_SEARCH("Schnellsuche"),
-        DETAIL_PAGE("Detailseite");
+        LANDING_PAGE("Startseite", CurlHttpTransport.HttpProtocol.NEGOTIATED),
+        QUICK_SEARCH("Schnellsuche", CurlHttpTransport.HttpProtocol.NEGOTIATED),
+        DETAIL_PAGE("Detailseite", CurlHttpTransport.HttpProtocol.HTTP_1_1);
 
         private final String displayName;
+        private final CurlHttpTransport.HttpProtocol httpProtocol;
 
-        RequestType(String displayName) {
+        RequestType(String displayName, CurlHttpTransport.HttpProtocol httpProtocol) {
             this.displayName = displayName;
+            this.httpProtocol = httpProtocol;
         }
 
         private String displayName() {
             return displayName;
+        }
+
+        private CurlHttpTransport.HttpProtocol httpProtocol() {
+            return httpProtocol;
         }
     }
 }

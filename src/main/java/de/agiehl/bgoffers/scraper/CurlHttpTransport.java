@@ -32,10 +32,11 @@ final class CurlHttpTransport implements AutoCloseable {
             String accept,
             URI referer,
             boolean ajaxRequest,
-            Map<String, String> headers) throws IOException, InterruptedException {
+            Map<String, String> headers,
+            HttpProtocol protocol) throws IOException, InterruptedException {
         var responseFile = Files.createTempFile("bg-offers-price-comparison-response-", ".body");
         try {
-            var command = command(uri, accept, referer, ajaxRequest, headers, responseFile);
+            var command = command(uri, accept, referer, ajaxRequest, headers, protocol, responseFile);
             var process = new ProcessBuilder(command).start();
             var metadata = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             var errorOutput = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).trim();
@@ -99,6 +100,7 @@ final class CurlHttpTransport implements AutoCloseable {
             URI referer,
             boolean ajaxRequest,
             Map<String, String> headers,
+            HttpProtocol protocol,
             Path responseFile) throws IOException {
         var cookies = cookieFile();
         var timeoutSeconds = timeoutSeconds(properties.http().timeout());
@@ -106,7 +108,6 @@ final class CurlHttpTransport implements AutoCloseable {
                 "curl",
                 "--silent",
                 "--show-error",
-                "--http1.1",
                 "--connect-timeout", timeoutSeconds,
                 "--max-time", timeoutSeconds,
                 "--output", responseFile.toString(),
@@ -114,6 +115,9 @@ final class CurlHttpTransport implements AutoCloseable {
                 "--cookie", cookies.toString(),
                 "--cookie-jar", cookies.toString(),
                 "--user-agent", properties.http().userAgent()));
+        if (protocol == HttpProtocol.HTTP_1_1) {
+            command.add("--http1.1");
+        }
         addHeader(command, "Accept", accept);
         addHeader(command, "Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7");
         if (ajaxRequest) {
@@ -171,6 +175,11 @@ final class CurlHttpTransport implements AutoCloseable {
         } catch (IllegalArgumentException exception) {
             throw new IOException("curl lieferte ungültige Antwortmetadaten", exception);
         }
+    }
+
+    enum HttpProtocol {
+        NEGOTIATED,
+        HTTP_1_1
     }
 
     record Response(
