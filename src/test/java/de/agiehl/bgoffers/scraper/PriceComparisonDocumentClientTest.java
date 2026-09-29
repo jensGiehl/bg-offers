@@ -1,11 +1,15 @@
 package de.agiehl.bgoffers.scraper;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.config.OfferProperties;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
@@ -24,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PriceComparisonDocumentClientTest {
 
     @Test
-    void loadsLandingPageAndSendsAllCookiesToSearchAndRedirectTarget() throws Exception {
+    void loadsLandingPageAndLogsEveryRequestWithHeadersAndCookies(CapturedOutput output) throws Exception {
         var landingRequests = new AtomicInteger();
         var searchCookie = new AtomicReference<String>();
         var searchReferer = new AtomicReference<String>();
@@ -56,12 +60,15 @@ class PriceComparisonDocumentClientTest {
             respond(exchange, 200, "text/html; charset=UTF-8", "<html><body>Startseite</body></html>");
         });
         server.start();
+        var httpLogger = (Logger) LoggerFactory.getLogger(PriceComparisonHttpClient.class);
+        var previousLevel = httpLogger.getLevel();
+        httpLogger.setLevel(Level.DEBUG);
         try {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
             var searchUri = baseUri.resolve("suche/?s=scythe");
             var client = new PriceComparisonDocumentClient(properties(baseUri));
 
-            var result = client.fetchFollowingRedirect(searchUri);
+            var result = client.search(searchUri);
 
             assertThat(result.location()).isEqualTo(baseUri.resolve("spiele/scythe/100/").toString());
             assertThat(result.selectFirst("[itemprop=lowPrice]").attr("content")).isEqualTo("44.90");
@@ -76,16 +83,39 @@ class PriceComparisonDocumentClientTest {
             assertThat(searchReferer).hasValue(baseUri.toString());
             assertThat(detailReferer).hasValue(searchUri.toString());
             assertThat(searchFetchDestination).hasValue("document");
+            assertThat(output.getOut())
+                    .contains("Brettspiel-Angebote HTTP-Request")
+                    .contains("Brettspiel-Angebote HTTP-Response")
+                    .contains("Methode=GET")
+                    .contains("Protokoll=ausgehandelt")
+                    .contains("Protokoll=HTTP/1.1")
+                    .contains("Header=")
+                    .contains("Cookies=<keine>")
+                    .contains("bunny_shield=shield-value")
+                    .contains("bunny_shield_id_85029=shield-id")
+                    .contains("search_step=redirect")
+                    .contains("/spiele/scythe/100/");
         } finally {
+            httpLogger.setLevel(previousLevel);
             server.stop(0);
         }
+    }
+
+    @Test
+    void providesExactlyOnePriceComparisonClientImplementation() {
+        new ApplicationContextRunner()
+                .withBean(OfferProperties.class, TestProperties::create)
+                .withUserConfiguration(PriceComparisonDocumentClient.class)
+                .run(context -> assertThat(context)
+                        .hasSingleBean(PriceComparisonClient.class)
+                        .hasSingleBean(PriceComparisonDocumentClient.class));
     }
 
     @Test
     void rejectsRequestsToOtherOriginsBeforeOpeningASession() {
         var client = new PriceComparisonDocumentClient(TestProperties.create());
 
-        assertThatThrownBy(() -> client.fetchFollowingRedirect(URI.create("https://example.org/")))
+        assertThatThrownBy(() -> client.search(URI.create("https://example.org/")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("konfigurierten Ursprung");
     }
@@ -104,7 +134,7 @@ class PriceComparisonDocumentClientTest {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
             var client = new PriceComparisonDocumentClient(properties(baseUri));
 
-            assertThatThrownBy(() -> client.fetchFollowingRedirect(baseUri.resolve("suche/?s=scythe")))
+            assertThatThrownBy(() -> client.search(baseUri.resolve("suche/?s=scythe")))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("konfigurierten Ursprung");
         } finally {
@@ -121,7 +151,7 @@ class PriceComparisonDocumentClientTest {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
             var client = new PriceComparisonDocumentClient(properties(baseUri));
 
-            assertThatThrownBy(() -> client.fetchFollowingRedirect(baseUri.resolve("suche/?s=scythe")))
+            assertThatThrownBy(() -> client.search(baseUri.resolve("suche/?s=scythe")))
                     .isInstanceOf(SourceAccessException.class)
                     .hasMessageContaining("HTTP 403");
             assertThat(output.getOut())

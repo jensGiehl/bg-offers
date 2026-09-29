@@ -14,8 +14,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Locale;
 
-@Component("priceComparisonDocumentClient")
-public class PriceComparisonDocumentClient implements DocumentClient {
+@Component
+public final class PriceComparisonDocumentClient implements PriceComparisonClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonDocumentClient.class);
     private static final String HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,"
@@ -31,23 +31,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     }
 
     @Override
-    public synchronized Document fetch(URI uri) {
-        requirePriceComparisonOrigin(uri);
-        try {
-            ensureSessionInitialized();
-            if (properties.sources().priceComparison().equals(uri)) {
-                LOGGER.debug("Preisvergleichsabruf verwendet die bereits geladene Startseite: {}", uri);
-                return landingPage.clone();
-            }
-            return fetchDocument(uri, properties.sources().priceComparison(), RequestType.DETAIL_PAGE);
-        } catch (SourceAccessException exception) {
-            resetSession(exception);
-            throw exception;
-        }
-    }
-
-    @Override
-    public synchronized Document fetchFollowingRedirect(URI uri) {
+    public synchronized Document search(URI uri) {
         requirePriceComparisonOrigin(uri);
         try {
             ensureSessionInitialized();
@@ -59,7 +43,9 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             }
             var targetUri = uri.resolve(redirect.location());
             requirePriceComparisonOrigin(targetUri);
-            LOGGER.debug("Preisvergleichssuche leitet auf Detailseite weiter: {} -> {}", uri, targetUri);
+            LOGGER.debug(
+                    "Preisvergleichsschritt: Typ=Weiterleitung, Von={}, Nach={}, Cookies={}",
+                    uri, targetUri, httpClient.cookiesForLogging(targetUri));
             return fetchDocument(targetUri, uri, RequestType.DETAIL_PAGE);
         } catch (SourceAccessException exception) {
             resetSession(exception);
@@ -72,8 +58,8 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             var baseUri = properties.sources().priceComparison();
             LOGGER.debug("Preisvergleichssitzung wird über die Startseite initialisiert: {}", baseUri);
             landingPage = fetchDocument(baseUri, null, RequestType.LANDING_PAGE);
-            LOGGER.debug("Preisvergleichssitzung ist initialisiert: {} Cookies",
-                    httpClient.cookies(baseUri).size());
+            LOGGER.debug("Preisvergleichssitzung ist initialisiert: Cookies={}",
+                    httpClient.cookiesForLogging(baseUri));
         }
     }
 
@@ -213,7 +199,9 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     }
 
     private void resetSession(SourceAccessException exception) {
-        LOGGER.debug("Preisvergleichssitzung wird nach einem Fehler verworfen: {}", exception.getMessage());
+        LOGGER.debug("Preisvergleichssitzung wird nach einem Fehler verworfen: Grund={}, Cookies={}",
+                exception.getMessage(),
+                httpClient.cookiesForLogging(properties.sources().priceComparison()));
         httpClient.reset();
         landingPage = null;
     }

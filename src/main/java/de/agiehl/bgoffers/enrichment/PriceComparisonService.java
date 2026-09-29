@@ -2,12 +2,11 @@ package de.agiehl.bgoffers.enrichment;
 
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
-import de.agiehl.bgoffers.scraper.DocumentClient;
+import de.agiehl.bgoffers.scraper.PriceComparisonClient;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,12 +21,12 @@ public class PriceComparisonService {
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonService.class);
     private static final Pattern BGG_ID_PATTERN = Pattern.compile("/boardgame/(\\d+)(?:[/#?]|$)");
 
-    private final DocumentClient client;
+    private final PriceComparisonClient client;
     private final OfferProperties properties;
     private final GameNameNormalizer normalizer;
 
     public PriceComparisonService(
-            @Qualifier("priceComparisonDocumentClient") DocumentClient client,
+            PriceComparisonClient client,
             OfferProperties properties,
             GameNameNormalizer normalizer) {
         this.client = client;
@@ -52,7 +51,7 @@ public class PriceComparisonService {
             var encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
             var searchUri = baseUri.resolve("suche/?s=" + encodedTerm);
             LOGGER.debug("Preisvergleich für {}: Suche mit Suchbegriff '{}'", gameName, searchTerm);
-            var detailPage = client.fetchFollowingRedirect(searchUri);
+            var detailPage = client.search(searchUri);
             var detailBggId = bggId(detailPage);
             if (bggId != null && detailBggId != null && !bggId.equals(detailBggId)) {
                 LOGGER.debug("Preisvergleich für {}: Detailseite gehört zur abweichenden BGG-ID {}",
