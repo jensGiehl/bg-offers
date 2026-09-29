@@ -114,9 +114,8 @@ class PriceComparisonDocumentClientTest {
             assertThat(output.getOut())
                     .contains("Typ=Startseite")
                     .contains("HTTP=403")
-                    .contains("Ziel-IP=")
-                    .contains("IP-Version=")
-                    .contains("Protokoll=HTTP/");
+                    .contains("Content-Type=text/html")
+                    .contains("Bytes=9");
         } finally {
             server.stop(0);
         }

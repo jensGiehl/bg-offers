@@ -1,13 +1,13 @@
 package de.agiehl.bgoffers.scraper;
 
 import de.agiehl.bgoffers.config.OfferProperties;
-import jakarta.annotation.PreDestroy;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -31,13 +31,13 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     private static final Pattern HEADER_NAME = Pattern.compile("[A-Za-z0-9-]+");
 
     private final OfferProperties properties;
-    private final CurlHttpTransport transport;
+    private final PriceComparisonHttpClient httpClient;
     private Document landingPage;
     private Map<String, String> csrfHeaders = Map.of();
 
     public PriceComparisonDocumentClient(OfferProperties properties) {
         this.properties = properties;
-        this.transport = new CurlHttpTransport(properties);
+        this.httpClient = new PriceComparisonHttpClient(properties);
     }
 
     @Override
@@ -80,7 +80,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             LOGGER.debug("Preisvergleichssitzung wird über die Startseite initialisiert: {}", baseUri);
             landingPage = fetchDocument(baseUri, null, RequestType.LANDING_PAGE);
             LOGGER.debug("Preisvergleichssitzung ist initialisiert: {} CSRF-Header, {} Cookies",
-                    csrfHeaders.size(), transport.cookies().size());
+                    csrfHeaders.size(), httpClient.cookies(baseUri).size());
         }
     }
 
@@ -97,38 +97,35 @@ public class PriceComparisonDocumentClient implements DocumentClient {
         }
     }
 
-    private CurlHttpTransport.Response executeGet(
+    private PriceComparisonHttpClient.Response executeGet(
             URI uri,
             String accept,
             URI referer,
             boolean ajaxRequest,
             Map<String, String> headers,
             RequestType requestType) {
-        IOException lastException = null;
+        RestClientException lastException = null;
         var attempts = Math.max(1, properties.http().maxAttempts());
         for (var attempt = 1; attempt <= attempts; attempt++) {
             var startedAt = System.nanoTime();
             LOGGER.debug("Preisvergleichsabruf startet: Typ={}, Versuch={}/{}, URI={}",
                     requestType.displayName(), attempt, attempts, uri);
             try {
-                var response = transport.get(
+                var response = httpClient.get(
                         uri, accept, referer, ajaxRequest, headers, requestType.httpProtocol());
                 var duration = elapsedMillis(startedAt);
-                var responseUri = response.uri();
                 var contentType = response.contentType() == null ? "unbekannt" : response.contentType();
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     LOGGER.debug(
-                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Ziel-IP={}, IP-Version={}, Protokoll=HTTP/{}, Content-Type={}, Bytes={}",
+                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Dauer={} ms, Content-Type={}, Bytes={}",
                             requestType.displayName(), attempt, attempts, response.statusCode(), uri,
-                            responseUri, duration, valueOrUnknown(response.remoteAddress()), response.ipVersion(),
-                            valueOrUnknown(response.httpVersion()), contentType, response.body().length);
+                            duration, contentType, response.body().length);
                     return response;
                 }
                 LOGGER.warn(
-                        "Preisvergleichsabruf fehlgeschlagen: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Antwort-URI={}, Dauer={} ms, Ziel-IP={}, IP-Version={}, Protokoll=HTTP/{}, Server={}, Content-Type={}, Titel={}, Bytes={}",
+                        "Preisvergleichsabruf fehlgeschlagen: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Dauer={} ms, Server={}, Content-Type={}, Titel={}, Bytes={}",
                         requestType.displayName(), attempt, attempts, response.statusCode(), uri,
-                        responseUri, duration, valueOrUnknown(response.remoteAddress()), response.ipVersion(),
-                        valueOrUnknown(response.httpVersion()), valueOrUnknown(response.server()), contentType,
+                        duration, valueOrUnknown(response.server()), contentType,
                         responseTitle(response), response.body().length);
                 rejectChallengeResponse(uri, response);
                 if (!isRetryable(response.statusCode()) || attempt == attempts) {
@@ -137,7 +134,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
                 }
                 LOGGER.debug("Preisvergleichsabruf von {} lieferte HTTP {}, neuer Versuch {}/{}",
                         uri, response.statusCode(), attempt + 1, attempts);
-            } catch (IOException exception) {
+            } catch (RestClientException exception) {
                 lastException = exception;
                 LOGGER.warn(
                         "Preisvergleichsabruf fehlgeschlagen: Typ={}, Versuch={}/{}, URI={}, Dauer={} ms, Netzwerkfehler={}",
@@ -148,9 +145,6 @@ public class PriceComparisonDocumentClient implements DocumentClient {
                 }
                 LOGGER.debug("Preisvergleichsabruf von {} ist fehlgeschlagen, neuer Versuch {}/{}",
                         uri, attempt + 1, attempts);
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new SourceAccessException("Abruf von %s wurde unterbrochen".formatted(uri), exception);
             }
             waitBeforeRetry(uri);
         }
@@ -169,7 +163,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
                 .or(() -> attribute(document.selectFirst("input[name=_csrf], input[name=_token]"), "value"));
         commonToken.ifPresent(token -> headers.putIfAbsent("X-CSRF-TOKEN", token));
 
-        transport.cookies().entrySet().stream()
+        httpClient.cookies(baseUri).entrySet().stream()
                 .filter(cookie -> cookie.getKey().equalsIgnoreCase("XSRF-TOKEN"))
                 .map(cookie -> decodeCookie(cookie.getValue()))
                 .flatMap(Optional::stream)
@@ -232,7 +226,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
         }
     }
 
-    private void rejectChallengeResponse(URI uri, CurlHttpTransport.Response response) {
+    private void rejectChallengeResponse(URI uri, PriceComparisonHttpClient.Response response) {
         var content = response.bodyAsString().toLowerCase(Locale.ROOT);
         if (content.contains("establishing a secure connection")
                 || content.contains("hold tight")
@@ -258,7 +252,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
     }
 
-    private String responseTitle(CurlHttpTransport.Response response) {
+    private String responseTitle(PriceComparisonHttpClient.Response response) {
         var title = Jsoup.parse(response.bodyAsString()).title().replaceAll("\\s+", " ").trim();
         if (title.isBlank()) {
             return "unbekannt";
@@ -272,25 +266,20 @@ public class PriceComparisonDocumentClient implements DocumentClient {
 
     private void resetSession(SourceAccessException exception) {
         LOGGER.debug("Preisvergleichssitzung wird nach einem Fehler verworfen: {}", exception.getMessage());
-        transport.reset();
+        httpClient.reset();
         landingPage = null;
         csrfHeaders = Map.of();
     }
 
-    @PreDestroy
-    void close() {
-        transport.close();
-    }
-
     private enum RequestType {
-        LANDING_PAGE("Startseite", CurlHttpTransport.HttpProtocol.NEGOTIATED),
-        QUICK_SEARCH("Schnellsuche", CurlHttpTransport.HttpProtocol.NEGOTIATED),
-        DETAIL_PAGE("Detailseite", CurlHttpTransport.HttpProtocol.HTTP_1_1);
+        LANDING_PAGE("Startseite", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED),
+        QUICK_SEARCH("Schnellsuche", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED),
+        DETAIL_PAGE("Detailseite", PriceComparisonHttpClient.HttpProtocol.HTTP_1_1);
 
         private final String displayName;
-        private final CurlHttpTransport.HttpProtocol httpProtocol;
+        private final PriceComparisonHttpClient.HttpProtocol httpProtocol;
 
-        RequestType(String displayName, CurlHttpTransport.HttpProtocol httpProtocol) {
+        RequestType(String displayName, PriceComparisonHttpClient.HttpProtocol httpProtocol) {
             this.displayName = displayName;
             this.httpProtocol = httpProtocol;
         }
@@ -299,7 +288,7 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             return displayName;
         }
 
-        private CurlHttpTransport.HttpProtocol httpProtocol() {
+        private PriceComparisonHttpClient.HttpProtocol httpProtocol() {
             return httpProtocol;
         }
     }
