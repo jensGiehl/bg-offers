@@ -9,40 +9,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
 import java.util.regex.Pattern;
 
 @Service
 public class PriceComparisonService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonService.class);
-    private static final double MINIMUM_MATCH = 0.55;
-    private static final int MAXIMUM_BGG_CANDIDATES = 5;
     private static final Pattern BGG_ID_PATTERN = Pattern.compile("/boardgame/(\\d+)(?:[/#?]|$)");
 
     private final DocumentClient client;
     private final OfferProperties properties;
     private final GameNameNormalizer normalizer;
-    private final ObjectMapper objectMapper;
 
     public PriceComparisonService(
             @Qualifier("priceComparisonDocumentClient") DocumentClient client,
             OfferProperties properties,
-            GameNameNormalizer normalizer,
-            ObjectMapper objectMapper) {
+            GameNameNormalizer normalizer) {
         this.client = client;
         this.properties = properties;
         this.normalizer = normalizer;
-        this.objectMapper = objectMapper;
     }
 
     public PriceComparisonResult lookup(String gameName) {
@@ -54,12 +44,22 @@ public class PriceComparisonService {
             return PriceComparisonResult.withStatus(LookupStatus.SKIPPED);
         }
         try {
-            var baseUri = properties.sources().priceComparison();
-            var candidates = findCandidates(baseUri, gameName);
-            if (candidates.isEmpty()) {
+            var searchTerm = normalizer.searchTerm(gameName);
+            if (searchTerm.isBlank()) {
                 return PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);
             }
-            return loadMatchingPrice(candidates, bggId);
+            var baseUri = properties.sources().priceComparison();
+            var encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
+            var searchUri = baseUri.resolve("suche/?s=" + encodedTerm);
+            LOGGER.debug("Preisvergleich für {}: Suche mit Suchbegriff '{}'", gameName, searchTerm);
+            var detailPage = client.fetchFollowingRedirect(searchUri);
+            var detailBggId = bggId(detailPage);
+            if (bggId != null && detailBggId != null && !bggId.equals(detailBggId)) {
+                LOGGER.debug("Preisvergleich für {}: Detailseite gehört zur abweichenden BGG-ID {}",
+                        gameName, detailBggId);
+                return PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);
+            }
+            return priceResult(detailPage);
         } catch (RuntimeException exception) {
             LOGGER.warn("Preisvergleich für {} ist fehlgeschlagen: {}", gameName, exception.getMessage());
             return PriceComparisonResult.withStatus(LookupStatus.ERROR);
@@ -71,89 +71,13 @@ public class PriceComparisonService {
         return result.status() == LookupStatus.FOUND && result.availablePrice() != null;
     }
 
-    private List<PriceCandidate> findCandidates(URI baseUri, String gameName) {
-        var searchTerms = searchTerms(gameName);
-        for (var index = 0; index < searchTerms.size(); index++) {
-            var searchTerm = searchTerms.get(index);
-            var encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
-            var searchUri = baseUri.resolve("quicksearch/?q=" + encodedTerm + "&source=header");
-            LOGGER.debug("Preisvergleich für {}: Schnellsuche {}/{} mit Suchbegriff '{}'", gameName,
-                    index + 1, searchTerms.size(), searchTerm);
-            var root = objectMapper.readTree(client.fetchJson(searchUri));
-            if (!root.isArray()) {
-                throw new IllegalStateException("Die Preisvergleichssuche lieferte keine Ergebnisliste");
-            }
-            var candidates = new ArrayList<PriceCandidate>();
-            for (var result : root) {
-                var name = result.path("name").stringValue("").trim();
-                var url = result.path("url").stringValue("").trim();
-                if (name.isBlank() || url.isBlank()) {
-                    continue;
-                }
-                var score = normalizer.similarity(gameName, name);
-                if (score >= MINIMUM_MATCH && normalizer.hasCompatibleEdition(gameName, name)) {
-                    candidates.add(new PriceCandidate(name, baseUri.resolve(url), score));
-                }
-            }
-            LOGGER.debug("Preisvergleich für {}: Schnellsuche {}/{} lieferte {} passende Kandidaten",
-                    gameName, index + 1, searchTerms.size(), candidates.size());
-            if (!candidates.isEmpty()) {
-                return candidates.stream()
-                        .sorted(Comparator.comparingDouble(PriceCandidate::score).reversed())
-                        .toList();
-            }
-        }
-        return List.of();
-    }
-
-    private List<String> searchTerms(String gameName) {
-        var normalizedName = normalizer.searchTerm(gameName);
-        if (normalizedName.isBlank()) {
-            return List.of();
-        }
-        var words = normalizedName.split("\\s+");
-        var terms = new ArrayList<String>();
-        var minimumLength = Math.min(2, words.length);
-        for (var length = words.length; length >= minimumLength; length--) {
-            terms.add(String.join(" ", Arrays.copyOf(words, length)));
-        }
-        return List.copyOf(terms);
-    }
-
-    private PriceComparisonResult loadMatchingPrice(List<PriceCandidate> candidates, Integer expectedBggId) {
-        var bestCandidate = candidates.getFirst();
-        Document bestCandidatePage = null;
-        if (expectedBggId != null) {
-            var candidatesToCheck = candidates.stream().limit(MAXIMUM_BGG_CANDIDATES).toList();
-            for (var index = 0; index < candidatesToCheck.size(); index++) {
-                var candidate = candidatesToCheck.get(index);
-                LOGGER.debug(
-                        "Preisvergleich: Detailseite {}/{} für Kandidat '{}' wird zur Prüfung der BGG-ID {} geladen: {}",
-                        index + 1, candidatesToCheck.size(), candidate.name(), expectedBggId, candidate.uri());
-                var detailPage = client.fetch(candidate.uri());
-                if (candidate.equals(bestCandidate)) {
-                    bestCandidatePage = detailPage;
-                }
-                if (expectedBggId.equals(bggId(detailPage))) {
-                    return priceResult(candidate, detailPage);
-                }
-            }
-        }
-        if (bestCandidatePage == null) {
-            LOGGER.debug("Preisvergleich: Detailseite für besten Kandidaten '{}' wird geladen: {}",
-                    bestCandidate.name(), bestCandidate.uri());
-            bestCandidatePage = client.fetch(bestCandidate.uri());
-        }
-        return priceResult(bestCandidate, bestCandidatePage);
-    }
-
-    private PriceComparisonResult priceResult(PriceCandidate candidate, Document detailPage) {
+    private PriceComparisonResult priceResult(Document detailPage) {
         var lowPrice = decimalAttribute(detailPage.selectFirst("[itemprop=offers] meta[itemprop=lowPrice]"), "content");
         var bestPrice = decimalAttribute(detailPage.selectFirst("[data-absolute-bestprice]"), "data-absolute-bestprice");
         if (lowPrice == null) {
             return PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);
         }
-        return new PriceComparisonResult(LookupStatus.FOUND, candidate.uri().toString(), lowPrice, bestPrice);
+        return new PriceComparisonResult(LookupStatus.FOUND, detailPage.location(), lowPrice, bestPrice);
     }
 
     private BigDecimal decimalAttribute(Element element, String attribute) {
@@ -170,8 +94,5 @@ public class PriceComparisonService {
         }
         var matcher = BGG_ID_PATTERN.matcher(bggLink.absUrl("href"));
         return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
-    }
-
-    private record PriceCandidate(String name, URI uri, double score) {
     }
 }

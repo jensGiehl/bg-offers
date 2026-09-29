@@ -13,6 +13,10 @@ public interface DocumentClient {
         return fetch(uri);
     }
 
+    default Document fetchFollowingRedirect(URI uri) {
+        return fetch(uri);
+    }
+
     default String fetchJson(URI uri) {
         throw new UnsupportedOperationException("JSON-Abrufe werden von diesem Client nicht unterstützt");
     }

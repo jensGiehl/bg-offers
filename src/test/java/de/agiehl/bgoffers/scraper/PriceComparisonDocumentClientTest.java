@@ -24,67 +24,58 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PriceComparisonDocumentClientTest {
 
     @Test
-    void loadsLandingPageAndReusesCookiesAndCsrfTokensForSearch() throws Exception {
+    void loadsLandingPageAndSendsAllCookiesToSearchAndRedirectTarget() throws Exception {
         var landingRequests = new AtomicInteger();
         var searchCookie = new AtomicReference<String>();
         var searchReferer = new AtomicReference<String>();
-        var searchRequestedWith = new AtomicReference<String>();
-        var searchCsrfToken = new AtomicReference<String>();
-        var searchXsrfToken = new AtomicReference<String>();
-        var landingAccept = new AtomicReference<String>();
-        var landingFetchDestination = new AtomicReference<String>();
-        var landingUpgrade = new AtomicReference<String>();
+        var detailCookie = new AtomicReference<String>();
+        var detailReferer = new AtomicReference<String>();
         var searchFetchDestination = new AtomicReference<String>();
-        var searchFetchMode = new AtomicReference<String>();
-        var searchFetchSite = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/quicksearch/", exchange -> {
+        server.createContext("/suche/", exchange -> {
             searchCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
             searchReferer.set(exchange.getRequestHeaders().getFirst("Referer"));
-            searchRequestedWith.set(exchange.getRequestHeaders().getFirst("X-Requested-With"));
-            searchCsrfToken.set(exchange.getRequestHeaders().getFirst("X-CSRF-TOKEN"));
-            searchXsrfToken.set(exchange.getRequestHeaders().getFirst("X-XSRF-TOKEN"));
             searchFetchDestination.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Dest"));
-            searchFetchMode.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Mode"));
-            searchFetchSite.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Site"));
-            respond(exchange, 200, "application/json", "[{\"name\":\"Scythe\"}]");
+            exchange.getResponseHeaders().add("Set-Cookie", "search_step=redirect; Path=/; HttpOnly");
+            exchange.getResponseHeaders().set("Location", "/spiele/scythe/100/");
+            respondWithoutBody(exchange, 302);
+        });
+        server.createContext("/spiele/scythe/100/", exchange -> {
+            detailCookie.set(exchange.getRequestHeaders().getFirst("Cookie"));
+            detailReferer.set(exchange.getRequestHeaders().getFirst("Referer"));
+            respond(exchange, 200, "text/html; charset=UTF-8", """
+                    <html><body><meta itemprop="lowPrice" content="44.90"></body></html>
+                    """);
         });
         server.createContext("/", exchange -> {
             landingRequests.incrementAndGet();
-            landingAccept.set(exchange.getRequestHeaders().getFirst("Accept"));
-            landingFetchDestination.set(exchange.getRequestHeaders().getFirst("Sec-Fetch-Dest"));
-            landingUpgrade.set(exchange.getRequestHeaders().getFirst("Upgrade-Insecure-Requests"));
-            exchange.getResponseHeaders().add("Set-Cookie", "session=landing-session; Path=/; HttpOnly");
-            exchange.getResponseHeaders().add("Set-Cookie", "XSRF-TOKEN=xsrf%2Bvalue; Path=/");
-            respond(exchange, 200, "text/html; charset=UTF-8", """
-                    <html>
-                      <head><meta name="csrf-token" content="csrf-value"></head>
-                      <body>Startseite</body>
-                    </html>
-                    """);
+            exchange.getResponseHeaders().add(
+                    "Set-Cookie", "bunny_shield=shield-value; Path=/; HttpOnly");
+            exchange.getResponseHeaders().add(
+                    "Set-Cookie", "bunny_shield_id_85029=shield-id; Path=/; HttpOnly");
+            respond(exchange, 200, "text/html; charset=UTF-8", "<html><body>Startseite</body></html>");
         });
         server.start();
         try {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
+            var searchUri = baseUri.resolve("suche/?s=scythe");
             var client = new PriceComparisonDocumentClient(properties(baseUri));
 
-            var firstResult = client.fetchJson(baseUri.resolve("quicksearch/?q=Scythe&source=header"));
-            var secondResult = client.fetchJson(baseUri.resolve("quicksearch/?q=Scythe&source=header"));
+            var result = client.fetchFollowingRedirect(searchUri);
 
-            assertThat(firstResult).isEqualTo("[{\"name\":\"Scythe\"}]");
-            assertThat(secondResult).isEqualTo(firstResult);
+            assertThat(result.location()).isEqualTo(baseUri.resolve("spiele/scythe/100/").toString());
+            assertThat(result.selectFirst("[itemprop=lowPrice]").attr("content")).isEqualTo("44.90");
             assertThat(landingRequests).hasValue(1);
-            assertThat(searchCookie.get()).contains("session=landing-session", "XSRF-TOKEN=xsrf%2Bvalue");
+            assertThat(searchCookie.get()).contains(
+                    "bunny_shield=shield-value",
+                    "bunny_shield_id_85029=shield-id");
+            assertThat(detailCookie.get()).contains(
+                    "bunny_shield=shield-value",
+                    "bunny_shield_id_85029=shield-id",
+                    "search_step=redirect");
             assertThat(searchReferer).hasValue(baseUri.toString());
-            assertThat(searchRequestedWith).hasValue("XMLHttpRequest");
-            assertThat(searchCsrfToken).hasValue("csrf-value");
-            assertThat(searchXsrfToken).hasValue("xsrf+value");
-            assertThat(landingAccept.get()).contains("image/avif", "application/signed-exchange");
-            assertThat(landingFetchDestination).hasValue("document");
-            assertThat(landingUpgrade).hasValue("1");
-            assertThat(searchFetchDestination).hasValue("empty");
-            assertThat(searchFetchMode).hasValue("cors");
-            assertThat(searchFetchSite).hasValue("same-origin");
+            assertThat(detailReferer).hasValue(searchUri.toString());
+            assertThat(searchFetchDestination).hasValue("document");
         } finally {
             server.stop(0);
         }
@@ -94,9 +85,31 @@ class PriceComparisonDocumentClientTest {
     void rejectsRequestsToOtherOriginsBeforeOpeningASession() {
         var client = new PriceComparisonDocumentClient(TestProperties.create());
 
-        assertThatThrownBy(() -> client.fetch(URI.create("https://example.org/")))
+        assertThatThrownBy(() -> client.fetchFollowingRedirect(URI.create("https://example.org/")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("konfigurierten Ursprung");
+    }
+
+    @Test
+    void rejectsRedirectsToOtherOrigins() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/suche/", exchange -> {
+            exchange.getResponseHeaders().set("Location", "https://example.org/spiele/scythe/");
+            respondWithoutBody(exchange, 302);
+        });
+        server.createContext("/", exchange -> respond(
+                exchange, 200, "text/html; charset=UTF-8", "<html><body>Startseite</body></html>"));
+        server.start();
+        try {
+            var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
+            var client = new PriceComparisonDocumentClient(properties(baseUri));
+
+            assertThatThrownBy(() -> client.fetchFollowingRedirect(baseUri.resolve("suche/?s=scythe")))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("konfigurierten Ursprung");
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -108,7 +121,7 @@ class PriceComparisonDocumentClientTest {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
             var client = new PriceComparisonDocumentClient(properties(baseUri));
 
-            assertThatThrownBy(() -> client.fetchJson(baseUri.resolve("quicksearch/?q=Scythe&source=header")))
+            assertThatThrownBy(() -> client.fetchFollowingRedirect(baseUri.resolve("suche/?s=scythe")))
                     .isInstanceOf(SourceAccessException.class)
                     .hasMessageContaining("HTTP 403");
             assertThat(output.getOut())
@@ -150,6 +163,11 @@ class PriceComparisonDocumentClientTest {
         exchange.getResponseHeaders().set("Content-Type", contentType);
         exchange.sendResponseHeaders(status, response.length);
         exchange.getResponseBody().write(response);
+        exchange.close();
+    }
+
+    private static void respondWithoutBody(HttpExchange exchange, int status) throws IOException {
+        exchange.sendResponseHeaders(status, -1);
         exchange.close();
     }
 }

@@ -3,7 +3,6 @@ package de.agiehl.bgoffers.scraper;
 import de.agiehl.bgoffers.config.OfferProperties;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -12,14 +11,8 @@ import org.springframework.web.client.RestClientException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Pattern;
 
 @Component("priceComparisonDocumentClient")
 public class PriceComparisonDocumentClient implements DocumentClient {
@@ -27,13 +20,10 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonDocumentClient.class);
     private static final String HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,"
             + "image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
-    private static final String JSON_ACCEPT = "application/json,text/javascript,*/*;q=0.1";
-    private static final Pattern HEADER_NAME = Pattern.compile("[A-Za-z0-9-]+");
 
     private final OfferProperties properties;
     private final PriceComparisonHttpClient httpClient;
     private Document landingPage;
-    private Map<String, String> csrfHeaders = Map.of();
 
     public PriceComparisonDocumentClient(OfferProperties properties) {
         this.properties = properties;
@@ -57,17 +47,20 @@ public class PriceComparisonDocumentClient implements DocumentClient {
     }
 
     @Override
-    public synchronized String fetchJson(URI uri) {
+    public synchronized Document fetchFollowingRedirect(URI uri) {
         requirePriceComparisonOrigin(uri);
         try {
             ensureSessionInitialized();
-            return executeGet(
-                    uri,
-                    JSON_ACCEPT,
-                    properties.sources().priceComparison(),
-                    true,
-                    csrfHeaders,
-                    RequestType.QUICK_SEARCH).bodyAsString();
+            var redirect = executeGet(
+                    uri, HTML_ACCEPT, properties.sources().priceComparison(), RequestType.SEARCH);
+            if (redirect.location() == null) {
+                throw new SourceAccessException(
+                        "Suche unter %s lieferte keinen Location-Header".formatted(uri));
+            }
+            var targetUri = uri.resolve(redirect.location());
+            requirePriceComparisonOrigin(targetUri);
+            LOGGER.debug("Preisvergleichssuche leitet auf Detailseite weiter: {} -> {}", uri, targetUri);
+            return fetchDocument(targetUri, uri, RequestType.DETAIL_PAGE);
         } catch (SourceAccessException exception) {
             resetSession(exception);
             throw exception;
@@ -79,17 +72,16 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             var baseUri = properties.sources().priceComparison();
             LOGGER.debug("Preisvergleichssitzung wird über die Startseite initialisiert: {}", baseUri);
             landingPage = fetchDocument(baseUri, null, RequestType.LANDING_PAGE);
-            LOGGER.debug("Preisvergleichssitzung ist initialisiert: {} CSRF-Header, {} Cookies",
-                    csrfHeaders.size(), httpClient.cookies(baseUri).size());
+            LOGGER.debug("Preisvergleichssitzung ist initialisiert: {} Cookies",
+                    httpClient.cookies(baseUri).size());
         }
     }
 
     private Document fetchDocument(URI uri, URI referer, RequestType requestType) {
-        var response = executeGet(uri, HTML_ACCEPT, referer, false, Map.of(), requestType);
+        var response = executeGet(uri, HTML_ACCEPT, referer, requestType);
         try {
             var document = Jsoup.parse(new ByteArrayInputStream(response.body()), null, response.uri().toString());
             rejectChallengePage(uri, document);
-            updateCsrfHeaders(document, properties.sources().priceComparison());
             return document;
         } catch (IOException exception) {
             throw new SourceAccessException(
@@ -101,8 +93,6 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             URI uri,
             String accept,
             URI referer,
-            boolean ajaxRequest,
-            Map<String, String> headers,
             RequestType requestType) {
         RestClientException lastException = null;
         var attempts = Math.max(1, properties.http().maxAttempts());
@@ -111,15 +101,14 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             LOGGER.debug("Preisvergleichsabruf startet: Typ={}, Versuch={}/{}, URI={}",
                     requestType.displayName(), attempt, attempts, uri);
             try {
-                var response = httpClient.get(
-                        uri, accept, referer, ajaxRequest, headers, requestType.httpProtocol());
+                var response = httpClient.get(uri, accept, referer, requestType.httpProtocol());
                 var duration = elapsedMillis(startedAt);
                 var contentType = response.contentType() == null ? "unbekannt" : response.contentType();
-                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                if (requestType.accepts(response.statusCode())) {
                     LOGGER.debug(
-                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Dauer={} ms, Content-Type={}, Bytes={}",
+                            "Preisvergleichsabruf beendet: Typ={}, Versuch={}/{}, HTTP={}, URI={}, Location={}, Dauer={} ms, Content-Type={}, Bytes={}",
                             requestType.displayName(), attempt, attempts, response.statusCode(), uri,
-                            duration, contentType, response.body().length);
+                            valueOrUnknown(response.location()), duration, contentType, response.body().length);
                     return response;
                 }
                 LOGGER.warn(
@@ -149,47 +138,6 @@ public class PriceComparisonDocumentClient implements DocumentClient {
             waitBeforeRetry(uri);
         }
         throw new SourceAccessException("Abruf von %s ist fehlgeschlagen".formatted(uri), lastException);
-    }
-
-    private void updateCsrfHeaders(Document document, URI baseUri) {
-        var headers = new LinkedHashMap<String, String>();
-        var springToken = attribute(document.selectFirst("meta[name=_csrf]"), "content");
-        var springHeader = attribute(document.selectFirst("meta[name=_csrf_header]"), "content");
-        if (springToken.isPresent() && springHeader.filter(this::validHeaderName).isPresent()) {
-            headers.put(springHeader.orElseThrow(), springToken.orElseThrow());
-        }
-
-        var commonToken = attribute(document.selectFirst("meta[name=csrf-token]"), "content")
-                .or(() -> attribute(document.selectFirst("input[name=_csrf], input[name=_token]"), "value"));
-        commonToken.ifPresent(token -> headers.putIfAbsent("X-CSRF-TOKEN", token));
-
-        httpClient.cookies(baseUri).entrySet().stream()
-                .filter(cookie -> cookie.getKey().equalsIgnoreCase("XSRF-TOKEN"))
-                .map(cookie -> decodeCookie(cookie.getValue()))
-                .flatMap(Optional::stream)
-                .findFirst()
-                .ifPresent(token -> headers.put("X-XSRF-TOKEN", token));
-        csrfHeaders = Map.copyOf(headers);
-    }
-
-    private Optional<String> attribute(Element element, String name) {
-        if (element == null || element.attr(name).isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.of(element.attr(name));
-    }
-
-    private Optional<String> decodeCookie(String value) {
-        try {
-            return Optional.of(URLDecoder.decode(
-                    value.replace("+", "%2B"), StandardCharsets.UTF_8));
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-    }
-
-    private boolean validHeaderName(String name) {
-        return HEADER_NAME.matcher(name).matches();
     }
 
     private void requirePriceComparisonOrigin(URI uri) {
@@ -260,28 +208,32 @@ public class PriceComparisonDocumentClient implements DocumentClient {
         return title.substring(0, Math.min(120, title.length()));
     }
 
-    private String valueOrUnknown(String value) {
-        return value == null || value.isBlank() ? "unbekannt" : value;
+    private String valueOrUnknown(Object value) {
+        return value == null || value.toString().isBlank() ? "unbekannt" : value.toString();
     }
 
     private void resetSession(SourceAccessException exception) {
         LOGGER.debug("Preisvergleichssitzung wird nach einem Fehler verworfen: {}", exception.getMessage());
         httpClient.reset();
         landingPage = null;
-        csrfHeaders = Map.of();
     }
 
     private enum RequestType {
-        LANDING_PAGE("Startseite", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED),
-        QUICK_SEARCH("Schnellsuche", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED),
-        DETAIL_PAGE("Detailseite", PriceComparisonHttpClient.HttpProtocol.HTTP_1_1);
+        LANDING_PAGE("Startseite", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED, false),
+        SEARCH("Suche", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED, true),
+        DETAIL_PAGE("Detailseite", PriceComparisonHttpClient.HttpProtocol.HTTP_1_1, false);
 
         private final String displayName;
         private final PriceComparisonHttpClient.HttpProtocol httpProtocol;
+        private final boolean redirectExpected;
 
-        RequestType(String displayName, PriceComparisonHttpClient.HttpProtocol httpProtocol) {
+        RequestType(
+                String displayName,
+                PriceComparisonHttpClient.HttpProtocol httpProtocol,
+                boolean redirectExpected) {
             this.displayName = displayName;
             this.httpProtocol = httpProtocol;
+            this.redirectExpected = redirectExpected;
         }
 
         private String displayName() {
@@ -290,6 +242,13 @@ public class PriceComparisonDocumentClient implements DocumentClient {
 
         private PriceComparisonHttpClient.HttpProtocol httpProtocol() {
             return httpProtocol;
+        }
+
+        private boolean accepts(int statusCode) {
+            if (redirectExpected) {
+                return statusCode >= 300 && statusCode < 400;
+            }
+            return statusCode >= 200 && statusCode < 300;
         }
     }
 }

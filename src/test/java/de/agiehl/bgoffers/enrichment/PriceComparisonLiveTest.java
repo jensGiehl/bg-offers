@@ -6,7 +6,6 @@ import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.scraper.PriceComparisonDocumentClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 
@@ -24,8 +23,7 @@ class PriceComparisonLiveTest {
         var service = new PriceComparisonService(
                 new PriceComparisonDocumentClient(properties),
                 properties,
-                new GameNameNormalizer(),
-                new ObjectMapper());
+                new GameNameNormalizer());
 
         var result = service.lookup("Scythe", 169786);
 

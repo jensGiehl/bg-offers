@@ -30,17 +30,15 @@ final class PriceComparisonHttpClient {
             URI uri,
             String accept,
             URI referer,
-            boolean ajaxRequest,
-            Map<String, String> headers,
             HttpProtocol protocol) {
         return client(protocol)
                 .get()
                 .uri(uri)
-                .headers(requestHeaders -> configureHeaders(
-                        requestHeaders, accept, referer, ajaxRequest, headers))
+                .headers(requestHeaders -> configureHeaders(requestHeaders, accept, referer))
                 .exchange((request, response) -> new Response(
                         response.getStatusCode().value(),
                         request.getURI(),
+                        response.getHeaders().getLocation(),
                         response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
                         response.getHeaders().getFirst(HttpHeaders.SERVER),
                         response.getBody().readAllBytes()));
@@ -82,28 +80,17 @@ final class PriceComparisonHttpClient {
     private void configureHeaders(
             HttpHeaders requestHeaders,
             String accept,
-            URI referer,
-            boolean ajaxRequest,
-            Map<String, String> headers) {
+            URI referer) {
         requestHeaders.set(HttpHeaders.ACCEPT, accept);
-        if (ajaxRequest) {
-            requestHeaders.set("X-Requested-With", "XMLHttpRequest");
-            requestHeaders.set("Sec-Fetch-Dest", "empty");
-            requestHeaders.set("Sec-Fetch-Mode", "cors");
-            requestHeaders.set("Sec-Fetch-Site", "same-origin");
-            requestHeaders.set("Priority", "u=1, i");
-        } else {
-            requestHeaders.set("Sec-Fetch-Dest", "document");
-            requestHeaders.set("Sec-Fetch-Mode", "navigate");
-            requestHeaders.set("Sec-Fetch-Site", referer == null ? "none" : "same-origin");
-            requestHeaders.set("Sec-Fetch-User", "?1");
-            requestHeaders.set("Upgrade-Insecure-Requests", "1");
-            requestHeaders.set("Priority", "u=0, i");
-        }
+        requestHeaders.set("Sec-Fetch-Dest", "document");
+        requestHeaders.set("Sec-Fetch-Mode", "navigate");
+        requestHeaders.set("Sec-Fetch-Site", referer == null ? "none" : "same-origin");
+        requestHeaders.set("Sec-Fetch-User", "?1");
+        requestHeaders.set("Upgrade-Insecure-Requests", "1");
+        requestHeaders.set("Priority", "u=0, i");
         if (referer != null) {
             requestHeaders.set(HttpHeaders.REFERER, referer.toString());
         }
-        headers.forEach(requestHeaders::set);
     }
 
     enum HttpProtocol {
@@ -114,6 +101,7 @@ final class PriceComparisonHttpClient {
     record Response(
             int statusCode,
             URI uri,
+            URI location,
             String contentType,
             String server,
             byte[] body) {
