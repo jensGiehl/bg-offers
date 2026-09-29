@@ -1,16 +1,18 @@
-package de.agiehl.bgoffers.scraper;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.config.OfferProperties;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.cookie.BasicCookieStore;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import java.net.CookieManager;
-import java.net.CookiePolicy;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,28 +25,25 @@ final class PriceComparisonHttpClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonHttpClient.class);
     private static final String ACCEPT_LANGUAGE = "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7";
 
-    private final CookieManager cookieManager;
-    private final RestClient negotiatedClient;
-    private final RestClient http1Client;
+    private final BasicCookieStore cookieStore;
+    private final RestClient restClient;
     private final String userAgent;
 
     PriceComparisonHttpClient(OfferProperties properties) {
         userAgent = properties.http().userAgent();
-        cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
-        negotiatedClient = createClient(properties, null);
-        http1Client = createClient(properties, HttpClient.Version.HTTP_1_1);
+        cookieStore = new BasicCookieStore();
+        restClient = createClient(properties);
     }
 
     Response get(
             URI uri,
             String accept,
-            URI referer,
-            HttpProtocol protocol) {
+            URI referer) {
         var headers = requestHeaders(accept, referer);
         LOGGER.debug(
                 "Brettspiel-Angebote HTTP-Request: Methode=GET, URI={}, Protokoll={}, Header={}, Cookies={}",
-                uri, protocol.displayName(), headersForLogging(headers), cookiesForLogging(uri));
-        var response = client(protocol)
+                uri, "HTTP/1.1", headersForLogging(headers), cookiesForLogging(uri));
+        var response = restClient
                 .get()
                 .uri(uri)
                 .headers(requestHeaders -> requestHeaders.putAll(headers))
@@ -64,7 +63,7 @@ final class PriceComparisonHttpClient {
     }
 
     String cookiesForLogging(URI uri) {
-        var cookies = cookieManager.getCookieStore().get(uri);
+        var cookies = cookieStore.getCookies();
         if (cookies.isEmpty()) {
             return "<keine>";
         }
@@ -74,26 +73,30 @@ final class PriceComparisonHttpClient {
     }
 
     void reset() {
-        cookieManager.getCookieStore().removeAll();
+        cookieStore.clear();
     }
 
-    private RestClient createClient(OfferProperties properties, HttpClient.Version version) {
-        var httpClientBuilder = HttpClient.newBuilder()
-                .connectTimeout(properties.http().timeout())
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .cookieHandler(cookieManager);
-        if (version != null) {
-            httpClientBuilder.version(version);
-        }
-        var requestFactory = new JdkClientHttpRequestFactory(httpClientBuilder.build());
+    private RestClient createClient(OfferProperties properties) {
+        var timeout = Timeout.ofMilliseconds(properties.http().timeout().toMillis());
+        var connectionConfig = ConnectionConfig.custom()
+                .setConnectTimeout(timeout)
+                .setSocketTimeout(timeout)
+                .build();
+        var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setDnsResolver(new Ipv6FirstDnsResolver())
+                .setDefaultConnectionConfig(connectionConfig)
+                .build();
+        var httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultCookieStore(cookieStore)
+                .disableRedirectHandling()
+                .build();
+        var requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        requestFactory.setConnectionRequestTimeout(properties.http().timeout());
         requestFactory.setReadTimeout(properties.http().timeout());
         return RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
-    }
-
-    private RestClient client(HttpProtocol protocol) {
-        return protocol == HttpProtocol.HTTP_1_1 ? http1Client : negotiatedClient;
     }
 
     private HttpHeaders requestHeaders(String accept, URI referer) {
@@ -117,21 +120,6 @@ final class PriceComparisonHttpClient {
         var sortedHeaders = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
         headers.forEach((name, values) -> sortedHeaders.put(name, List.copyOf(values)));
         return new LinkedHashMap<>(sortedHeaders);
-    }
-
-    enum HttpProtocol {
-        NEGOTIATED("ausgehandelt"),
-        HTTP_1_1("HTTP/1.1");
-
-        private final String displayName;
-
-        HttpProtocol(String displayName) {
-            this.displayName = displayName;
-        }
-
-        private String displayName() {
-            return displayName;
-        }
     }
 
     record Response(

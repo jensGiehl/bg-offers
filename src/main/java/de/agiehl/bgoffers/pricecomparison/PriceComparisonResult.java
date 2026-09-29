@@ -1,4 +1,4 @@
-package de.agiehl.bgoffers.enrichment;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.domain.LookupStatus;
 

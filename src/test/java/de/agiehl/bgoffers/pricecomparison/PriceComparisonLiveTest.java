@@ -1,9 +1,9 @@
-package de.agiehl.bgoffers.enrichment;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
-import de.agiehl.bgoffers.scraper.PriceComparisonDocumentClient;
+import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 

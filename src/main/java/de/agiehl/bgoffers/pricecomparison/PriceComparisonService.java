@@ -1,8 +1,8 @@
-package de.agiehl.bgoffers.enrichment;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
-import de.agiehl.bgoffers.scraper.PriceComparisonClient;
+import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
@@ -51,7 +51,7 @@ public class PriceComparisonService {
             var encodedTerm = URLEncoder.encode(searchTerm, StandardCharsets.UTF_8);
             var searchUri = baseUri.resolve("suche/?s=" + encodedTerm);
             LOGGER.debug("Preisvergleich für {}: Suche mit Suchbegriff '{}'", gameName, searchTerm);
-            var detailPage = client.search(searchUri);
+            var detailPage = client.search(searchUri, bggId);
             var detailBggId = bggId(detailPage);
             if (bggId != null && detailBggId != null && !bggId.equals(detailBggId)) {
                 LOGGER.debug("Preisvergleich für {}: Detailseite gehört zur abweichenden BGG-ID {}",

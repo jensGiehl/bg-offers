@@ -63,3 +63,4 @@ offers:
 logging:
   level:
     de.agiehl.bgoffers: INFO
+    de.agiehl.bgoffers.pricecomparison: ${PRICE_COMPARISON_LOG_LEVEL:INFO}

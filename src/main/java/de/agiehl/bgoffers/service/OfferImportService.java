@@ -1,5 +1,6 @@
 package de.agiehl.bgoffers.service;
 
+import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
@@ -7,9 +8,8 @@ import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.enrichment.BggLookupService;
 import de.agiehl.bgoffers.enrichment.BggResult;
 import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
-import de.agiehl.bgoffers.enrichment.PriceComparisonService;
-import de.agiehl.bgoffers.enrichment.PriceComparisonResult;
-import de.agiehl.bgoffers.config.OfferProperties;
+import de.agiehl.bgoffers.pricecomparison.PriceComparisonResult;
+import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.scraper.OfferScraper;

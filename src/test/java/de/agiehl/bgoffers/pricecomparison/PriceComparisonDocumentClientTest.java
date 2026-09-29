@@ -1,4 +1,4 @@
-package de.agiehl.bgoffers.scraper;
+package de.agiehl.bgoffers.pricecomparison;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.config.OfferProperties;
+import de.agiehl.bgoffers.scraper.SourceAccessException;
 import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,9 +61,9 @@ class PriceComparisonDocumentClientTest {
             respond(exchange, 200, "text/html; charset=UTF-8", "<html><body>Startseite</body></html>");
         });
         server.start();
-        var httpLogger = (Logger) LoggerFactory.getLogger(PriceComparisonHttpClient.class);
-        var previousLevel = httpLogger.getLevel();
-        httpLogger.setLevel(Level.DEBUG);
+        var moduleLogger = (Logger) LoggerFactory.getLogger(PriceComparisonService.class.getPackageName());
+        var previousLevel = moduleLogger.getLevel();
+        moduleLogger.setLevel(Level.DEBUG);
         try {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
             var searchUri = baseUri.resolve("suche/?s=scythe");
@@ -84,10 +85,10 @@ class PriceComparisonDocumentClientTest {
             assertThat(detailReferer).hasValue(searchUri.toString());
             assertThat(searchFetchDestination).hasValue("document");
             assertThat(output.getOut())
+                    .contains("Preisvergleichsabruf startet")
                     .contains("Brettspiel-Angebote HTTP-Request")
                     .contains("Brettspiel-Angebote HTTP-Response")
                     .contains("Methode=GET")
-                    .contains("Protokoll=ausgehandelt")
                     .contains("Protokoll=HTTP/1.1")
                     .contains("Header=")
                     .contains("Cookies=<keine>")
@@ -96,7 +97,47 @@ class PriceComparisonDocumentClientTest {
                     .contains("search_step=redirect")
                     .contains("/spiele/scythe/100/");
         } finally {
-            httpLogger.setLevel(previousLevel);
+            moduleLogger.setLevel(previousLevel);
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void selectsSearchResultByBoardGameGeekIdAndLoadsItsDetailPage() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/suche/", exchange -> {
+            if (exchange.getRequestURI().getPath().equals("/suche/")) {
+                exchange.getResponseHeaders().set("Location", "/suche/Scythe/");
+                respondWithoutBody(exchange, 302);
+                return;
+            }
+            respond(exchange, 200, "text/html; charset=UTF-8", """
+                    <div class="item-box">
+                      <a href="/spiele/anderes-spiel/99/">Anderes Spiel</a>
+                      <a href="https://boardgamegeek.com/boardgame/999">BGG</a>
+                    </div>
+                    <div class="item-box">
+                      <a href="/spiele/scythe/100/">Scythe</a>
+                      <a href="https://boardgamegeek.com/boardgame/169786/scythe">BGG</a>
+                    </div>
+                    """);
+        });
+        server.createContext("/spiele/scythe/100/", exchange -> respond(
+                exchange, 200, "text/html; charset=UTF-8", """
+                        <html><body><meta itemprop="lowPrice" content="44.90"></body></html>
+                        """));
+        server.createContext("/", exchange -> respond(
+                exchange, 200, "text/html; charset=UTF-8", "<html><body>Startseite</body></html>"));
+        server.start();
+        try {
+            var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
+            var client = new PriceComparisonDocumentClient(properties(baseUri));
+
+            var result = client.search(baseUri.resolve("suche/?s=Scythe"), 169786);
+
+            assertThat(result.location()).isEqualTo(baseUri.resolve("spiele/scythe/100/").toString());
+            assertThat(result.selectFirst("[itemprop=lowPrice]").attr("content")).isEqualTo("44.90");
+        } finally {
             server.stop(0);
         }
     }

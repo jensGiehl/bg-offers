@@ -1,7 +1,7 @@
 package de.agiehl.bgoffers.service;
 
 import de.agiehl.bgoffers.config.OfferProperties;
-import de.agiehl.bgoffers.enrichment.PriceComparisonService;
+import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import org.slf4j.Logger;

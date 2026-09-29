@@ -3,7 +3,7 @@ package de.agiehl.bgoffers.service;
 import de.agiehl.bgoffers.domain.ExternalHealthCheck;
 import de.agiehl.bgoffers.domain.ExternalHealthCheckStatus;
 import de.agiehl.bgoffers.enrichment.BggLookupService;
-import de.agiehl.bgoffers.enrichment.PriceComparisonService;
+import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.repository.ExternalHealthCheckStatusRepository;
 import org.junit.jupiter.api.Test;

@@ -3,7 +3,7 @@ package de.agiehl.bgoffers.service;
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
-import de.agiehl.bgoffers.enrichment.PriceComparisonService;
+import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import de.agiehl.bgoffers.scraper.ScrapedOffer;

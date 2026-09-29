@@ -1,8 +1,8 @@
-package de.agiehl.bgoffers.enrichment;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
-import de.agiehl.bgoffers.scraper.PriceComparisonDocumentClient;
+import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import de.agiehl.bgoffers.scraper.SourceAccessException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -25,7 +25,7 @@ class PriceComparisonServiceTest {
         var searchUrl = baseUrl + "suche/?s=Scythe";
         var detailUrl = baseUrl + "spiele/scythe/100/";
         var client = mock(PriceComparisonDocumentClient.class);
-        when(client.search(URI.create(searchUrl))).thenReturn(document("""
+        when(client.search(URI.create(searchUrl), null)).thenReturn(document("""
                 <div itemprop="offers"><meta itemprop="lowPrice" content="44.90"></div>
                 <span data-absolute-bestprice="32.50"></span>
                 """, detailUrl));
@@ -38,7 +38,7 @@ class PriceComparisonServiceTest {
         assertThat(result.url()).isEqualTo(detailUrl);
         assertThat(result.availablePrice()).isEqualByComparingTo(new BigDecimal("44.90"));
         assertThat(result.bestPrice()).isEqualByComparingTo(new BigDecimal("32.50"));
-        verify(client).search(URI.create(searchUrl));
+        verify(client).search(URI.create(searchUrl), null);
     }
 
     @Test
@@ -47,7 +47,7 @@ class PriceComparisonServiceTest {
         var searchUrl = baseUrl + "suche/?s=Kingdom+Builder";
         var detailUrl = baseUrl + "spiele/kingdom-builder/200/";
         var client = mock(PriceComparisonDocumentClient.class);
-        when(client.search(URI.create(searchUrl))).thenReturn(document("""
+        when(client.search(URI.create(searchUrl), null)).thenReturn(document("""
                 <div itemprop="offers"><meta itemprop="lowPrice" content="29.99"></div>
                 """, detailUrl));
         var service = new PriceComparisonService(
@@ -56,7 +56,7 @@ class PriceComparisonServiceTest {
         var result = service.lookup("  Kingdom Builder (deutsch)  ");
 
         assertThat(result.status()).isEqualTo(LookupStatus.FOUND);
-        verify(client).search(URI.create(searchUrl));
+        verify(client).search(URI.create(searchUrl), null);
     }
 
     @Test
@@ -65,7 +65,7 @@ class PriceComparisonServiceTest {
         var searchUrl = baseUrl + "suche/?s=Scythe";
         var detailUrl = baseUrl + "spiele/scythe/999/";
         var client = mock(PriceComparisonDocumentClient.class);
-        when(client.search(URI.create(searchUrl))).thenReturn(document("""
+        when(client.search(URI.create(searchUrl), 169786)).thenReturn(document("""
                 <a href="https://boardgamegeek.com/boardgame/999999/scythe">BGG</a>
                 <div itemprop="offers"><meta itemprop="lowPrice" content="65.00"></div>
                 """, detailUrl));
@@ -82,7 +82,7 @@ class PriceComparisonServiceTest {
         var baseUrl = "https://www.brettspiel-angebote.de/";
         var searchUrl = baseUrl + "suche/?s=Unbekanntes+Spiel";
         var client = mock(PriceComparisonDocumentClient.class);
-        when(client.search(URI.create(searchUrl))).thenReturn(
+        when(client.search(URI.create(searchUrl), null)).thenReturn(
                 document("<html><body>Kein Preis</body></html>", searchUrl));
         var service = new PriceComparisonService(
                 client, TestProperties.create(), new GameNameNormalizer());
@@ -95,7 +95,7 @@ class PriceComparisonServiceTest {
     @Test
     void returnsErrorWhenSearchCannotBeLoaded() {
         var client = mock(PriceComparisonDocumentClient.class);
-        when(client.search(URI.create("https://www.brettspiel-angebote.de/suche/?s=Scythe")))
+        when(client.search(URI.create("https://www.brettspiel-angebote.de/suche/?s=Scythe"), null))
                 .thenThrow(new SourceAccessException("nicht erreichbar"));
         var service = new PriceComparisonService(
                 client, TestProperties.create(), new GameNameNormalizer());

@@ -1,8 +1,10 @@
-package de.agiehl.bgoffers.scraper;
+package de.agiehl.bgoffers.pricecomparison;
 
 import de.agiehl.bgoffers.config.OfferProperties;
+import de.agiehl.bgoffers.scraper.SourceAccessException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -13,6 +15,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Component
 public final class PriceComparisonDocumentClient implements PriceComparisonClient {
@@ -20,6 +23,7 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonDocumentClient.class);
     private static final String HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,"
             + "image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+    private static final Pattern DETAIL_PATH = Pattern.compile("^/spiele/[^/]+/\\d+/?$");
 
     private final OfferProperties properties;
     private final PriceComparisonHttpClient httpClient;
@@ -31,7 +35,7 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
     }
 
     @Override
-    public synchronized Document search(URI uri) {
+    public synchronized Document search(URI uri, Integer bggId) {
         requirePriceComparisonOrigin(uri);
         try {
             ensureSessionInitialized();
@@ -46,11 +50,44 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
             LOGGER.debug(
                     "Preisvergleichsschritt: Typ=Weiterleitung, Von={}, Nach={}, Cookies={}",
                     uri, targetUri, httpClient.cookiesForLogging(targetUri));
-            return fetchDocument(targetUri, uri, RequestType.DETAIL_PAGE);
+            var targetPage = fetchDocument(targetUri, uri, RequestType.REDIRECT_TARGET);
+            if (DETAIL_PATH.matcher(targetUri.getPath()).matches()) {
+                return targetPage;
+            }
+            var detailUri = detailUri(targetPage, bggId);
+            if (detailUri == null) {
+                return targetPage;
+            }
+            LOGGER.debug("Preisvergleichsschritt: Typ=Suchtreffer, Von={}, Nach={}", targetUri, detailUri);
+            return fetchDocument(detailUri, targetUri, RequestType.DETAIL_PAGE);
         } catch (SourceAccessException exception) {
             resetSession(exception);
             throw exception;
         }
+    }
+
+    private URI detailUri(Document searchResults, Integer bggId) {
+        var result = searchResults.select(".item-box").stream()
+                .filter(item -> bggId == null || hasBggId(item, bggId))
+                .findFirst()
+                .orElse(null);
+        if (result == null) {
+            return null;
+        }
+        var link = result.selectFirst("a[href*='/spiele/']");
+        if (link == null || link.absUrl("href").isBlank()) {
+            return null;
+        }
+        var uri = URI.create(link.absUrl("href"));
+        requirePriceComparisonOrigin(uri);
+        return uri;
+    }
+
+    private boolean hasBggId(Element result, int bggId) {
+        var expectedPath = "/boardgame/" + bggId;
+        return result.select("a[href*='boardgamegeek.com/boardgame/']").stream()
+                .map(link -> URI.create(link.attr("href")).getPath())
+                .anyMatch(path -> path.equals(expectedPath) || path.startsWith(expectedPath + "/"));
     }
 
     private void ensureSessionInitialized() {
@@ -87,7 +124,7 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
             LOGGER.debug("Preisvergleichsabruf startet: Typ={}, Versuch={}/{}, URI={}",
                     requestType.displayName(), attempt, attempts, uri);
             try {
-                var response = httpClient.get(uri, accept, referer, requestType.httpProtocol());
+                var response = httpClient.get(uri, accept, referer);
                 var duration = elapsedMillis(startedAt);
                 var contentType = response.contentType() == null ? "unbekannt" : response.contentType();
                 if (requestType.accepts(response.statusCode())) {
@@ -207,29 +244,21 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
     }
 
     private enum RequestType {
-        LANDING_PAGE("Startseite", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED, false),
-        SEARCH("Suche", PriceComparisonHttpClient.HttpProtocol.NEGOTIATED, true),
-        DETAIL_PAGE("Detailseite", PriceComparisonHttpClient.HttpProtocol.HTTP_1_1, false);
+        LANDING_PAGE("Startseite", false),
+        SEARCH("Suche", true),
+        REDIRECT_TARGET("Weiterleitungsziel", false),
+        DETAIL_PAGE("Detailseite", false);
 
         private final String displayName;
-        private final PriceComparisonHttpClient.HttpProtocol httpProtocol;
         private final boolean redirectExpected;
 
-        RequestType(
-                String displayName,
-                PriceComparisonHttpClient.HttpProtocol httpProtocol,
-                boolean redirectExpected) {
+        RequestType(String displayName, boolean redirectExpected) {
             this.displayName = displayName;
-            this.httpProtocol = httpProtocol;
             this.redirectExpected = redirectExpected;
         }
 
         private String displayName() {
             return displayName;
-        }
-
-        private PriceComparisonHttpClient.HttpProtocol httpProtocol() {
-            return httpProtocol;
         }
 
         private boolean accepts(int statusCode) {
