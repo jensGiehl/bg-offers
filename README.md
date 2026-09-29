@@ -147,7 +147,7 @@ docker build \
 
 Beim veröffentlichten Image übergibt der GitHub-Workflow die Commit-ID automatisch an den Build.
 
-Für einen Betrieb mit dem in der GitHub Container Registry veröffentlichten Image kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt.
+Das in der GitHub Container Registry veröffentlichte Image unterstützt `linux/amd64` und `linux/arm64`, unter anderem für aktuelle 64-Bit-Raspberry-Pi-Systeme. Für den Betrieb kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt.
 
 ```bash
 docker rm -f bg-offers 2>/dev/null
