@@ -337,7 +337,29 @@ Im anschließenden Raspberry-Pi-Vergleich lieferte dieselbe curl-Konfiguration �
 
 Für Pi-Systeme mit NetworkManager ist das Bevorzugen temporärer IPv6-Adressen eine mögliche dauerhafte Konfiguration: Die Einstellung `ipv6.ip6-privacy=2` erzeugt für SLAAC temporäre Adressen und bevorzugt sie für ausgehende Verbindungen. Sie wird im aktiven Verbindungsprofil gespeichert und betrifft auch andere Programme, die dessen IPv6-Verbindung verwenden. Die Einstellung ist von `ipv6.addr-gen-mode=stable-privacy` zu unterscheiden. Details beschreibt die [NetworkManager-Dokumentation](https://www.networkmanager.dev/docs/api/latest/settings-ipv6.html). Änderungen lassen sich mit `nmcli device reapply` auf die aktive Verbindung anwenden, soweit NetworkManager sie im laufenden Betrieb unterstützt. Vor der Annahme eines behobenen Java-Zugriffs müssen die tatsächlich ausgewählte Quelladresse mit `ip -6 route get` und anschließend der vollständige JAR-Diagnosemodus geprüft werden. Ein erfolgreicher Startseitenabruf mit curl allein bestätigt noch nicht die Suche und Preis-Auswertung mit Java. Bei einem anderen Netzwerkmanager muss dessen IPv6-Konfiguration verwendet werden; eine NetworkManager-Konfiguration darf nicht ungeprüft übertragen werden.
 
-Beim untersuchten Pi war die Verbindung auf `wlan0` als Netplan-Profil vorhanden, hatte aber `ipv6.method=ignore`. Der vorgeschlagene NetworkManager-Block brach deshalb vor einer Änderung ab. Für dieses Profil darf die Anleitung für `ipv6.method=auto` nicht unverändert angewendet werden. Als Laufzeittest wurde stattdessen `net.ipv6.conf.wlan0.use_tempaddr=2` vorgeschlagen; dieser Kernel-Wert aktiviert die Privacy Extensions und bevorzugt temporäre Adressen. In der anschließenden Ausgabe war eine öffentliche temporäre IPv6-Adresse vorhanden, die `ip -6 route get` auch als Quelladresse für das geprüfte CDN-Ziel auswählte. Welche Adresse der vorherige Java-Aufruf verwendete, ist damit nicht rückwirkend belegt. Die dauerhafte Speicherung und der Java-Erfolg sind für diesen Pi noch nicht bestätigt. Details zum Kernel-Wert enthält die [Linux-Dokumentation](https://docs.kernel.org/networking/ip-sysctl.html).
+Beim untersuchten Pi war die Verbindung auf `wlan0` als Netplan-Profil vorhanden, hatte aber `ipv6.method=ignore`. Der vorgeschlagene NetworkManager-Block brach deshalb vor einer Änderung ab. Für dieses Profil darf die Anleitung für `ipv6.method=auto` nicht unverändert angewendet werden. Als Laufzeittest wurde stattdessen `net.ipv6.conf.wlan0.use_tempaddr=2` vorgeschlagen; dieser Kernel-Wert aktiviert die Privacy Extensions und bevorzugt temporäre Adressen. In der anschließenden Ausgabe war eine öffentliche temporäre IPv6-Adresse vorhanden, die `ip -6 route get` auch als Quelladresse für das geprüfte CDN-Ziel auswählte. Welche Adresse der vorherige Java-Aufruf verwendete, ist damit nicht rückwirkend belegt. Details zum Kernel-Wert enthält die [Linux-Dokumentation](https://docs.kernel.org/networking/ip-sysctl.html).
+
+Der anschließende vollständige JAR-Test mit Zulu `27+35` auf dem Pi war erfolgreich: Der Apache-Client verwendete für alle vier Antworten dieselbe temporäre IPv6-Quelladresse und erhielt HTTP 200, 302, 200 und 200 über HTTP/1.1 mit TLS 1.3. Die Suche nach Scythe lieferte `FOUND` und einen verfügbaren Preis von 67,95 Euro. Zusammen mit dem curl-Vergleich bestätigt dies den Einfluss der Quelladresse und den erfolgreichen Java-Zugriff über eine temporäre Adresse. Die genaue Schutzregel des Betreibers bleibt unbekannt.
+
+Für diesen Pi kann die erfolgreich getestete Kernel-Einstellung in einer eigenen Datei gespeichert werden. Als `root` ausführen:
+
+```bash
+cat > /etc/sysctl.d/99-bg-offers-ipv6-privacy.conf <<'EOF'
+net.ipv6.conf.wlan0.use_tempaddr = 2
+EOF
+sysctl -p /etc/sysctl.d/99-bg-offers-ipv6-privacy.conf
+```
+
+Die Einstellung betrifft ausgehende IPv6-Verbindungen über `wlan0`, auch die anderer Programme. Die konkrete temporäre IP wird nicht festgeschrieben. Laut [systemd-Dokumentation zu sysctl.d](https://github.com/systemd/systemd/blob/main/man/sysctl.d.xml) werden diese Dateien beim Systemstart eingelesen; Einstellungen für Netzwerkschnittstellen werden auch beim Erscheinen der Schnittstelle angewendet. Der laufende Anwendungsprozess sollte anschließend neu gestartet werden, damit neue Verbindungen aufgebaut werden. Nach dem nächsten Neustart des Pi im Projektverzeichnis prüfen:
+
+```bash
+sysctl net.ipv6.conf.wlan0.use_tempaddr
+ip -6 address show dev wlan0 scope global
+ip -6 route get 2400:52e0:1e00:2::1332:1
+java -jar target/bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
+```
+
+Erwartet werden `use_tempaddr = 2`, eine öffentliche Adresse mit `temporary`, eine temporäre Quelladresse in der Route und `FOUND` beim Java-Test. Der Test nach einem Neustart ist für diesen Pi noch offen; dabei wird auch geprüft, ob eine andere Netzwerkkonfiguration den Kernel-Wert überschreibt.
 
 | Neuer Befund auf dem Pi | Aussage und nächster Versuch |
 | --- | --- |
