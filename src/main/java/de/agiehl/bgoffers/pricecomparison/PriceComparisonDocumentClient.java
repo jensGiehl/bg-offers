@@ -7,7 +7,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 
@@ -16,7 +15,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Locale;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 @Component
@@ -31,16 +29,9 @@ public final class PriceComparisonDocumentClient implements PriceComparisonClien
     private final PriceComparisonHttpClient httpClient;
     private Document landingPage;
 
-    @Autowired
     public PriceComparisonDocumentClient(OfferProperties properties) {
-        this(properties, _ -> {});
-    }
-
-    PriceComparisonDocumentClient(
-            OfferProperties properties,
-            Consumer<PriceComparisonHttpClient.ConnectionDetails> connectionObserver) {
         this.properties = properties;
-        this.httpClient = new PriceComparisonHttpClient(properties, connectionObserver);
+        this.httpClient = new PriceComparisonHttpClient(properties);
     }
 
     @Override

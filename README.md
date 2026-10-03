@@ -43,7 +43,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - Maven 3.9 oder neuer
 - Optional: Telegram-Bot und Chat-ID
 - Optional, aber für BGG-Daten erforderlich: persönlicher BGG-API-Token
-- Bei einem Betrieb auf einem Cloud-Server: ein VPN mit einer nicht als Cloud-/Rechenzentrums-IP erkannten Ausgangsadresse, zum Beispiel ein WireGuard-Tunnel zur eigenen FRITZ!Box. brettspiel-angebote.de scheint Zugriffe von Cloud-IPs zu sperren.
+- Für den Preisvergleich: funktionierender Internetzugang mit einer von brettspiel-angebote.de akzeptierten Quelladresse. Für den Raspberry Pi ist der Zugriff über temporäre öffentliche IPv6-Adressen bestätigt; die Docker-Konfiguration übernimmt dafür das Host-Netzwerk.
 
 ## Lokal starten
 
@@ -137,17 +137,43 @@ Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-ange
 
 ## Docker
 
-Das Image wird einschließlich Tests gebaut:
+Das Image unterstützt `linux/amd64` und `linux/arm64`, einschließlich 64-Bit-Raspberry-Pi-Systemen. Es läuft mit Java 25 und als Benutzer `app` mit UID/GID `10001`. Der GitHub-Workflow baut beide Architekturen einschließlich der Tests und veröffentlicht sie unter `ghcr.io/jensgiehl/bg-offers:latest`. Anschließend prüft er für beide Architekturen den Containerstart mit Host-Netzwerk auf Port 8089, die Web-Oberfläche und das Anlegen der Datenbank in einem eingebundenen Ordner; externe Abrufe sind für diese Prüfung deaktiviert.
 
-```bash
-docker build \
-  --build-arg GIT_COMMIT="$(git rev-parse HEAD)" \
-  -t bg-offers:local .
+### Raspberry Pi mit funktionierendem IPv6-Zugriff
+
+Auf dem untersuchten Pi funktioniert der vollständige Preisvergleich über eine temporäre öffentliche IPv6-Adresse. Der Container verwendet deshalb das **Host-Netzwerk** des Linux-Pi. Damit stehen dieselben IPv6-Adressen, Routen und die auf dem Host konfigurierte Quelladresswahl zur Verfügung. Ein gewöhnliches Docker-Bridge-Netzwerk übernimmt diese Einstellung nicht automatisch. Die [Docker-Dokumentation zum Host-Netzwerk](https://docs.docker.com/engine/network/drivers/host/) beschreibt diesen Modus.
+
+Die erfolgreiche Einstellung bleibt auf dem **Pi-Host** in `/etc/sysctl.d/99-bg-offers-ipv6-privacy.conf` gespeichert:
+
+```ini
+net.ipv6.conf.wlan0.use_tempaddr = 2
 ```
 
-Beim veröffentlichten Image übergibt der GitHub-Workflow die Commit-ID automatisch an den Build.
+Der Container benötigt dafür keine zusätzlichen Rechte und keine eigenen Netzwerk-Sysctls. Die konkrete temporäre IP wird nicht festgeschrieben. Die Einstellung gilt für `wlan0`; bei einer anderen Netzwerkschnittstelle muss deren Name verwendet werden. Details zu temporären Adressen beschreibt die [Linux-Dokumentation](https://docs.kernel.org/networking/ip-sysctl.html).
 
-Das in der GitHub Container Registry veröffentlichte Image unterstützt `linux/amd64` und `linux/arm64`, unter anderem für aktuelle 64-Bit-Raspberry-Pi-Systeme. Für den Betrieb kann das folgende Skript verwendet werden. `8089` ist dabei der Port auf dem Host; innerhalb des Containers läuft die Anwendung auf Port `8080`. Das Verzeichnis `./data` wird eingebunden, damit die H2-Datenbank beim Ersetzen des Containers erhalten bleibt.
+Im Projektverzeichnis die Konfiguration und den Datenbankordner vorbereiten:
+
+```bash
+if [ ! -f .env ]; then cp .env.example .env; fi
+chmod 600 .env
+mkdir -p data
+sudo chown -R 10001:10001 data
+```
+
+In `.env` bei Bedarf `BGG_API_TOKEN`, `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` eintragen. unknowns.de bleibt in der Vorlage deaktiviert; zum Aktivieren `UNKNOWNS_ENABLED=true` sowie Benutzername und Passwort setzen. `.env` wird von Git und vom Docker-Build ausgeschlossen. Der Container bindet `./data` unter `/app/data` ein, sodass die H2-Datenbank beim Ersetzen des Containers erhalten bleibt. Liegen die bisherigen Daten in einem anderen Verzeichnis, muss der Bind-Mount entsprechend angepasst werden. Eine vorhandene Java-Instanz vor dem Containerstart beenden, damit die Datenbank nur von einem Prozess geöffnet wird.
+
+Mit Docker Compose v2 oder neuer starten:
+
+```bash
+docker compose pull
+docker rm -f bg-offers 2>/dev/null
+docker compose up -d
+docker compose logs --tail=100 -f bg-offers
+```
+
+Die Compose-Datei verwendet `network_mode: host`, `restart: unless-stopped` und standardmäßig `SERVER_PORT=8089`. **8089 ist der Port am Host.** Da der Container das Host-Netzwerk verwendet, lauscht die Anwendung selbst auf Port 8089; es gibt hier keine Portweiterleitung. Port 8089 muss frei sein. Die Oberfläche ist im Heimnetz unter `http://<PI-IP>:8089` erreichbar. Der beim Start ausgeführte Systemcheck prüft auch den vollständigen Scythe-Preisvergleich; dessen Ergebnis erscheint in der Statusmeldung beziehungsweise ohne Telegram-Konfiguration im Anwendungslog.
+
+Alternativ derselbe Start ohne Compose, mit der vorbereiteten `.env`:
 
 ```bash
 docker rm -f bg-offers 2>/dev/null
@@ -156,86 +182,48 @@ docker run -d \
   --name bg-offers \
   --pull=always \
   --init \
-  -p 8089:8080 \
-  -v "$(pwd)/data:/app/data" \
-  -e INITIAL_IMPORT="false" \
-  -e BGG_MARKET_ENABLED="true" \
-  -e BGG_API_TOKEN="BGG_TOKEN" \
-  -e TELEGRAM_BOT_TOKEN="BOT_TOKEN" \
-  -e TELEGRAM_CHAT_ID="CHAT_ID" \
-  -e UNKNOWNS_USERNAME="BENUTZERNAME_ODER_EMAIL" \
-  -e UNKNOWNS_PASSWORD="PASSWORT" \
+  --restart unless-stopped \
+  --network host \
+  --env-file .env \
+  -e SERVER_PORT=8089 \
+  -e DB_PATH=/app/data/bg-offers \
+  --mount "type=bind,source=$(pwd)/data,target=/app/data" \
   ghcr.io/jensgiehl/bg-offers:latest
 ```
 
-Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. Wer das lokal gebaute Image statt eines Registry-Images verwendet, ersetzt die letzte Zeile durch `bg-offers:local` und entfernt `--pull=always`.
+Bei Updates `docker compose pull` und anschließend `docker compose up -d` ausführen. Nach einem Host-Neustart läuft der Container automatisch wieder an, sofern der Docker-Dienst beim Systemstart aktiviert ist. Für diesen Zugriffspfad wird Docker Engine auf Linux mit normalem Host-Netzwerk vorausgesetzt. Docker Desktop und Rootless-Docker verwenden andere Netzwerktechnik; dort muss der tatsächliche IPv6-Ausgang separat geprüft werden.
 
-### Docker über VPN beziehungsweise WireGuard betreiben
-
-Ein HTTP 403 allein belegt keine Sperre der Ausgangs-IP. Als Ursachen kommen unter anderem Schutzregeln für die konkrete Anfrage, den TLS-Client oder den Netzwerkausgang infrage. Ein VPN ist ein möglicher Vergleichstest, wenn der Netzwerkausgang als Einflussfaktor untersucht werden soll; es garantiert keinen erfolgreichen Abruf. Ein WireGuard-Tunnel zur eigenen FRITZ!Box lässt die Abrufe über den heimischen Anschluss laufen. Auch im Heimnetz können einzelne Geräte unterschiedliche Ergebnisse liefern.
-
-In der FRITZ!Box wird unter **Internet → Freigaben → VPN (WireGuard) → WireGuard-Verbindung hinzufügen → Einzelgerät verbinden** eine eigene Verbindung für den Docker-Host angelegt. Anschließend wird die Konfigurationsdatei heruntergeladen. Die FRITZ!Box benötigt dafür eine öffentliche IPv4-Adresse oder eine per IPv6 erreichbare Verbindung; der Docker-Host muss das jeweilige Protokoll ebenfalls nutzen können. Eine ausführliche Anleitung bietet [FRITZ!](https://fritz.com/apps/knowledge-base/FRITZ-Box-7682/3685_WireGuard-VPN-zur-FRITZ-Box-am-Computer-einrichten).
-
-Die heruntergeladene Datei enthält einen privaten Schlüssel und darf weder veröffentlicht noch in Git eingecheckt werden. Auf dem Linux-Docker-Host wird sie beispielsweise so abgelegt:
+### Image lokal bauen
 
 ```bash
-sudo install -d -o "$(id -u)" -g "$(id -g)" -m 700 \
-  /opt/bg-offers-wireguard/wg_confs
-install -m 600 /pfad/zur/heruntergeladenen-fritzbox.conf \
-  /opt/bg-offers-wireguard/wg_confs/wg0.conf
+docker build \
+  --build-arg GIT_COMMIT="$(git rev-parse HEAD)" \
+  -t bg-offers:local .
 ```
 
-In `wg0.conf` muss `AllowedIPs` den Wert `0.0.0.0/0` enthalten, damit der gesamte IPv4-Verkehr von `bg-offers` durch den Tunnel läuft. Falls die exportierte Datei zusätzlich `::/0` enthält, der Docker-Host oder Anschluss aber kein funktionierendes IPv6 unterstützt, sollte `::/0` entfernt werden.
+Für den lokalen Start im obigen `docker run` die letzte Zeile durch `bg-offers:local` ersetzen und `--pull=always` entfernen. Das lokale Image wird ebenfalls einschließlich Tests gebaut.
 
-Das folgende Beispiel startet zuerst einen WireGuard-Client und anschließend `bg-offers` in dessen Netzwerk-Namespace. Deshalb wird `8089:8080` am WireGuard-Container veröffentlicht und am Anwendungscontainer weder `-p` noch ein eigenes Docker-Netzwerk angegeben. `8089` ist der Port auf dem Host; die Anwendung lauscht im gemeinsamen Netzwerk-Namespace weiterhin auf Port `8080`.
+### Betrieb mit einem eigenen Docker-Netzwerk
+
+Wenn ein Docker-Netzwerk bereits einen geeigneten IPv6-Internetzugang besitzt, kann weiterhin ein klassischer Start mit Portweiterleitung verwendet werden. Das folgende Beispiel setzt diesen Zugang voraus und ist nicht die empfohlene Pi-Konfiguration:
 
 ```bash
-docker rm -f bg-offers bg-offers-wireguard 2>/dev/null
-
-docker run -d \
-  --name bg-offers-wireguard \
-  --pull=always \
-  --cap-add=NET_ADMIN \
-  --sysctl net.ipv4.conf.all.src_valid_mark=1 \
-  -e PUID="$(id -u)" \
-  -e PGID="$(id -g)" \
-  -e TZ="Europe/Berlin" \
-  -v /opt/bg-offers-wireguard:/config \
-  -p 8089:8080 \
-  --restart unless-stopped \
-  lscr.io/linuxserver/wireguard:latest
+docker rm -f bg-offers 2>/dev/null
 
 docker run -d \
   --name bg-offers \
   --pull=always \
   --init \
-  --network container:bg-offers-wireguard \
-  -v "$(pwd)/data:/app/data" \
-  -e INITIAL_IMPORT="false" \
-  -e BGG_MARKET_ENABLED="true" \
-  -e BGG_API_TOKEN="BGG_TOKEN" \
-  -e TELEGRAM_BOT_TOKEN="BOT_TOKEN" \
-  -e TELEGRAM_CHAT_ID="CHAT_ID" \
-  -e UNKNOWNS_USERNAME="BENUTZERNAME_ODER_EMAIL" \
-  -e UNKNOWNS_PASSWORD="PASSWORT" \
   --restart unless-stopped \
+  -p 8089:8080 \
+  --env-file .env \
+  -e SERVER_PORT=8080 \
+  -e DB_PATH=/app/data/bg-offers \
+  --mount "type=bind,source=$(pwd)/data,target=/app/data" \
   ghcr.io/jensgiehl/bg-offers:latest
 ```
 
-Auf aktuellen Linux-Kerneln ist das WireGuard-Modul üblicherweise bereits vorhanden. Meldet der WireGuard-Container ein fehlendes Kernelmodul, können zusätzlich `--cap-add=SYS_MODULE` und `-v /lib/modules:/lib/modules:ro` gesetzt werden. Weitere Details zum Client-Modus enthält die [Dokumentation des verwendeten WireGuard-Images](https://docs.linuxserver.io/images/docker-wireguard/).
-
-Der Tunnel und die verwendete öffentliche Ausgangs-IP lassen sich anschließend prüfen:
-
-```bash
-docker exec bg-offers-wireguard wg show
-docker run --rm --network container:bg-offers curlimages/curl:latest -fsS https://api.ipify.org
-```
-
-Die zweite Ausgabe sollte der öffentlichen IPv4-Adresse des heimischen FRITZ!Box-Anschlusses entsprechen. Wird der WireGuard-Container ersetzt oder neu gestartet, sollte anschließend auch `bg-offers` neu gestartet werden, damit der gemeinsam verwendete Netzwerk-Namespace sicher zum aktuellen Container gehört. Die Web-Oberfläche bleibt auf dem Docker-Host unter `http://localhost:8089` erreichbar.
-
-Ein erfolgreicher Abruf über die heimische IPv6-Adresse bedeutet nicht automatisch, dass dieselbe Seite auch über die heimische IPv4-Adresse erreichbar ist. Bei HTTP 403 können `curl -4` und `curl -6` mit denselben Browser-Headern getrennt zur Diagnose verwendet werden. Funktioniert nur IPv6, reicht der in der FRITZ!Box integrierte WireGuard-Server derzeit nicht als Internet-Gateway: Laut [FRITZ!-Dokumentation](https://fritz.com/apps/knowledge-base/fritz-box-7632/3732_does-the-fritz-box-transmit-ipv6-data-over-vpn) kann er zwar eine VPN-Verbindung über IPv6 herstellen und entfernte Heimnetzgeräte per IPv6 zugänglich machen, routet aber keinen IPv6-Internetzugriff für den VPN-Client. `::/0` allein löst das daher nicht. Mögliche Alternativen sind der Betrieb von `bg-offers` im Heimnetz, eine neue beziehungsweise entsperrte öffentliche IPv4-Adresse oder ein eigener IPv6-fähiger VPN-Gateway beziehungsweise Proxy im Heimnetz.
-
-Statt einer FRITZ!Box kann die WireGuard-Konfiguration eines VPN-Anbieters auf dieselbe Weise als `wg0.conf` verwendet werden. Der Anbieter muss einen vollständigen Tunnel erlauben, und dessen Ausgangs-IP darf von brettspiel-angebote.de nicht ebenfalls gesperrt sein. Der komplette ausgehende Verkehr von `bg-offers` – einschließlich Telegram, BoardGameGeek und aller weiteren Quellen – läuft in dieser Variante über das VPN.
+Hier ist **8089 der Port am Host**, während die Anwendung im Container auf 8080 läuft. Docker-Bridge-Netzwerke benötigen eine passende IPv6-Konfiguration und Route; die bloße IPv6-Verfügbarkeit auf dem Host reicht nicht aus. Wird ein eigenes Netzwerk benötigt, kann es über `--network NETZWERKNAME` angegeben werden. Details beschreibt die [Docker-Dokumentation zu Bridge-Netzwerken](https://docs.docker.com/engine/network/drivers/bridge/).
 
 ## Tests
 
@@ -261,113 +249,11 @@ Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Syste
 
 ## Hinweise zu externen Seiten
 
-### HTTP 403 auf Windows und Raspberry Pi vergleichen
+### IPv6-Quelladresse und HTTP 403
 
-Die Diagnosewerkzeuge führen gezielte Abrufe aus. Die curl-Diagnose benötigt Python 3 und curl, aber keine zusätzlichen Python-Pakete. Sie verwendet die Browser-Header aus `scripts/price-comparison.curl`, passend zu den aktuellen Standardwerten des Java-Clients. `Accept-Encoding` entspricht den vom Apache-Client ergänzten Kompressionsformaten. Jeder Test lädt ausschließlich die Startseite mit einer frischen Verbindung, ohne Cookies, Redirect-Following oder Wiederholungen. Standardmäßig werden IPv6 mit HTTP/1.1, IPv6 mit HTTP/2 und IPv4 mit HTTP/1.1 verglichen. HTTP/2 wird übersprungen, wenn curl es nicht unterstützt; bei einer Aushandlung von HTTP/1.1 steht die tatsächlich verwendete Version im Bericht. Die Optionen sind in der [curl-Dokumentation](https://curl.se/docs/manpage.html) beschrieben.
+Auf dem Raspberry Pi zeigte ein Vergleich mit identischen curl-Anfragen und derselben Zieladresse: ursprüngliche IPv6-Quelladresse HTTP 403, zusätzliche zufällige IPv6-Quelladresse aus demselben `/64` HTTP 200, ursprüngliche Adresse erneut HTTP 403. Nach dem Aktivieren und Bevorzugen temporärer IPv6-Adressen war auch der vollständige Java-Preisvergleich mit Zulu `27+35` erfolgreich. Die vier Antworten lieferten HTTP 200, 302, 200 und 200; Scythe wurde mit verfügbarem Preis gefunden. Der Benutzer bestätigte anschließend auch den Erfolg nach dem Speichern der Einstellung.
 
-Auf dem Raspberry Pi im Projektverzeichnis:
-
-```bash
-python3 scripts/diagnose-price-comparison.py
-```
-
-Unter Windows:
-
-```powershell
-python scripts/diagnose-price-comparison.py
-```
-
-Wenn die Änderungen noch ausschließlich im Windows-Workspace liegen, müssen zunächst die beiden Dateien `scripts/diagnose-price-comparison.py` und `scripts/price-comparison.curl` zusammen in das Verzeichnis `scripts/` des Pi-Checkouts übertragen werden. Für den folgenden Java-Test wird zusätzlich das neu gebaute JAR benötigt.
-
-Der Bericht wird als UTF-8-JSON unter `diagnostics/` gespeichert; dieses Verzeichnis ist von Git ausgeschlossen. Er enthält curl-Version einschließlich TLS-Bibliothek, Java-Version, Adressfamilie, lokale und entfernte Verbindungsadresse, tatsächliche HTTP-Version, ausgewählte Antwort-Header einschließlich CDN-Request-ID sowie Größe und SHA-256 des empfangenen Antwortkörpers. Cookie-Werte und HTML-Inhalte werden nicht in den Bericht übernommen; die temporären Rohdateien werden nach jedem Test gelöscht. `wire_body_bytes` und `wire_body_sha256` beziehen sich auf den möglicherweise komprimierten Körper und sind deshalb nicht direkt mit dekomprimierten Java-Antwortgrößen vergleichbar. `local_ip` ist die lokale Socket-Adresse und kann bei IPv4 hinter NAT eine private Adresse sein. Die Diagnose deaktiviert die normale curl-Konfigurationsdatei und umgeht Umgebungs-Proxys ausdrücklich, damit ein direkter Netzwerktest entsteht.
-
-Nur den bisher fehlenden IPv6-/HTTP/1.1-Test ausführen:
-
-```bash
-python3 scripts/diagnose-price-comparison.py --only ipv6-http1
-```
-
-Der gleiche Einzeltest ohne Python:
-
-```bash
-curl --disable --config scripts/price-comparison.curl \
-  --noproxy '*' --ipv6 --http1.1 --silent --show-error \
-  --connect-timeout 10 --max-time 30 --output /dev/null \
-  --write-out 'HTTP=%{http_code} Version=%{http_version} Lokal=%{local_ip} Ziel=%{remote_ip}\n'
-```
-
-Bei weiterhin unterschiedlichen Ergebnissen kann die im Windows-Bericht beobachtete **entfernte** IPv6-Adresse auf dem Pi als Ziel festgelegt werden. Beim lokalen Test am 03.10.2026 war das `2400:52e0:1e00:2::1331:1`; CDN-Adressen können sich ändern, deshalb möglichst einen zeitnahen Windows-Bericht verwenden:
-
-```bash
-python3 scripts/diagnose-price-comparison.py \
-  --only ipv6-http1 --remote-ip 2400:52e0:1e00:2::1331:1
-```
-
-`--remote-ip` verwendet curl `--resolve`; Hostname, Zertifikatsprüfung und TLS-SNI bleiben erhalten. Dies reduziert DNS-bedingte Zielunterschiede, garantiert bei einem CDN aber keinen identischen physischen Server. Mit `--source-ip` kann optional eine **bereits am jeweiligen Gerät konfigurierte** lokale Quelladresse ausgewählt werden. Eine Windows-Adresse darf dabei nicht einfach auf dem Pi verwendet werden. Das Skript filtert die Testvarianten passend zur Adressfamilie der vorgegebenen IP.
-
-Ein zusätzlicher Vergleich mit ausschließlich TLS 1.2 ist möglich:
-
-```bash
-python3 scripts/diagnose-price-comparison.py --tls12
-```
-
-Für den Java-Vergleich gibt es einen Diagnosemodus im normalen ausführbaren JAR. Er startet keinen Spring-Kontext, Webserver, Scheduler, Datenbankzugriff oder Telegram-Versand. Er verwendet den bestehenden Dokument-Client samt Startseite, Cookie-Sitzung, Suche und Detailseite und sucht genau einmal nach „Scythe“. Automatische Wiederholungen sind deaktiviert. Die DNS-Ausgabe zeigt nur die Kandidatenreihenfolge. Für jede empfangene HTTP-Antwort zeigt eine zusätzliche Zeile `Verbindung:` die tatsächlichen lokalen und entfernten Socket-Adressen einschließlich Ports, HTTP-Status und Protokoll sowie TLS-Version, Cipher und CDN-Request-ID. Diese Daten stammen aus dem Apache-Verbindungskontext; Cookie-Werte werden dabei nicht ausgegeben. Bei einem Verbindungsfehler vor der HTTP-Antwort gibt es keine solche Zeile. Verwendet werden die im JAR enthaltene `application.yml` und deren Umgebungsvariablen; externe Spring-Konfigurationsdateien und zusätzliche Spring-Kommandozeilenoptionen werden in diesem Modus nicht eingelesen.
-
-Unter Windows bauen und testen:
-
-```powershell
-mvn package
-Get-FileHash target/bg-offers-0.0.1-SNAPSHOT.jar -Algorithm SHA256
-java -jar target/bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
-```
-
-**Dasselbe gebaute JAR** auf den Pi kopieren und dort zunächst mit der vorhandenen Java-Version, anschließend mit Temurin 25 möglichst im gleichen Patchstand wie Windows ausführen. Die JAR-Hashes müssen übereinstimmen; auf dem Pi hierfür nicht erneut bauen:
-
-```bash
-sha256sum bg-offers-0.0.1-SNAPSHOT.jar
-java -jar bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
-/pfad/zu/temurin-25/bin/java -jar bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
-```
-
-Exit-Code `0` bedeutet einen gefundenen Preis, `2` einen erfolglosen Preisvergleich. Fehler vor dem Preisvergleich, beispielsweise bei der DNS-Auflösung, führen zu einem anderen Fehler-Exit-Code. `--jar /pfad/zum/bg-offers-0.0.1-SNAPSHOT.jar` ergänzt bei der Python-Diagnose den JAR-Hash im JSON-Bericht. Die dort ausgegebene Java-Version gehört zu `java` im `PATH`; bei Tests mit einem absoluten Java-Pfad ist die Java-Ausgabe des Diagnosemodus maßgeblich.
-
-Am 03.10.2026 wurde im Windows-Workspace mit Temurin `25.0.3+9` beobachtet: Der bestehende Java-Live-Test war erfolgreich; curl/Schannel lieferte bei HTTP/1.1 über IPv6 HTTP 200 und über IPv4 HTTP 403. Der zusätzliche IPv6-Test mit TLS 1.2 lieferte ebenfalls HTTP 200. Windows-curl unterstützte kein HTTP/2. Diese Ergebnisse sind eine Vergleichsbasis und belegen keine Sperre der Pi-Adresse.
-
-Im anschließenden Raspberry-Pi-Vergleich lieferte dieselbe curl-Konfiguration über HTTP/1.1 mit derselben IPv6-Zieladresse zunächst HTTP 403, mit einer zusätzlich eingerichteten zufälligen IPv6-Quelladresse aus demselben lokalen `/64` HTTP 200 und danach mit der ursprünglichen Quelladresse erneut HTTP 403. Damit ist die unterschiedliche Behandlung der konkreten Quelladressen in diesem Test belegt. Welche Schutzregel dafür verantwortlich ist, lässt sich daraus nicht bestimmen. Auf der ursprünglichen Pi-Adresse scheiterten auch Java mit Zulu 27 und Temurin 25 sowie automatisiertes Headless-Chromium bereits an der Startseite.
-
-Für Pi-Systeme mit NetworkManager ist das Bevorzugen temporärer IPv6-Adressen eine mögliche dauerhafte Konfiguration: Die Einstellung `ipv6.ip6-privacy=2` erzeugt für SLAAC temporäre Adressen und bevorzugt sie für ausgehende Verbindungen. Sie wird im aktiven Verbindungsprofil gespeichert und betrifft auch andere Programme, die dessen IPv6-Verbindung verwenden. Die Einstellung ist von `ipv6.addr-gen-mode=stable-privacy` zu unterscheiden. Details beschreibt die [NetworkManager-Dokumentation](https://www.networkmanager.dev/docs/api/latest/settings-ipv6.html). Änderungen lassen sich mit `nmcli device reapply` auf die aktive Verbindung anwenden, soweit NetworkManager sie im laufenden Betrieb unterstützt. Vor der Annahme eines behobenen Java-Zugriffs müssen die tatsächlich ausgewählte Quelladresse mit `ip -6 route get` und anschließend der vollständige JAR-Diagnosemodus geprüft werden. Ein erfolgreicher Startseitenabruf mit curl allein bestätigt noch nicht die Suche und Preis-Auswertung mit Java. Bei einem anderen Netzwerkmanager muss dessen IPv6-Konfiguration verwendet werden; eine NetworkManager-Konfiguration darf nicht ungeprüft übertragen werden.
-
-Beim untersuchten Pi war die Verbindung auf `wlan0` als Netplan-Profil vorhanden, hatte aber `ipv6.method=ignore`. Der vorgeschlagene NetworkManager-Block brach deshalb vor einer Änderung ab. Für dieses Profil darf die Anleitung für `ipv6.method=auto` nicht unverändert angewendet werden. Als Laufzeittest wurde stattdessen `net.ipv6.conf.wlan0.use_tempaddr=2` vorgeschlagen; dieser Kernel-Wert aktiviert die Privacy Extensions und bevorzugt temporäre Adressen. In der anschließenden Ausgabe war eine öffentliche temporäre IPv6-Adresse vorhanden, die `ip -6 route get` auch als Quelladresse für das geprüfte CDN-Ziel auswählte. Welche Adresse der vorherige Java-Aufruf verwendete, ist damit nicht rückwirkend belegt. Details zum Kernel-Wert enthält die [Linux-Dokumentation](https://docs.kernel.org/networking/ip-sysctl.html).
-
-Der anschließende vollständige JAR-Test mit Zulu `27+35` auf dem Pi war erfolgreich: Der Apache-Client verwendete für alle vier Antworten dieselbe temporäre IPv6-Quelladresse und erhielt HTTP 200, 302, 200 und 200 über HTTP/1.1 mit TLS 1.3. Die Suche nach Scythe lieferte `FOUND` und einen verfügbaren Preis von 67,95 Euro. Zusammen mit dem curl-Vergleich bestätigt dies den Einfluss der Quelladresse und den erfolgreichen Java-Zugriff über eine temporäre Adresse. Die genaue Schutzregel des Betreibers bleibt unbekannt.
-
-Für diesen Pi kann die erfolgreich getestete Kernel-Einstellung in einer eigenen Datei gespeichert werden. Als `root` ausführen:
-
-```bash
-cat > /etc/sysctl.d/99-bg-offers-ipv6-privacy.conf <<'EOF'
-net.ipv6.conf.wlan0.use_tempaddr = 2
-EOF
-sysctl -p /etc/sysctl.d/99-bg-offers-ipv6-privacy.conf
-```
-
-Die Einstellung betrifft ausgehende IPv6-Verbindungen über `wlan0`, auch die anderer Programme. Die konkrete temporäre IP wird nicht festgeschrieben. Laut [systemd-Dokumentation zu sysctl.d](https://github.com/systemd/systemd/blob/main/man/sysctl.d.xml) werden diese Dateien beim Systemstart eingelesen; Einstellungen für Netzwerkschnittstellen werden auch beim Erscheinen der Schnittstelle angewendet. Der laufende Anwendungsprozess sollte anschließend neu gestartet werden, damit neue Verbindungen aufgebaut werden. Nach dem nächsten Neustart des Pi im Projektverzeichnis prüfen:
-
-```bash
-sysctl net.ipv6.conf.wlan0.use_tempaddr
-ip -6 address show dev wlan0 scope global
-ip -6 route get 2400:52e0:1e00:2::1332:1
-java -jar target/bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
-```
-
-Erwartet werden `use_tempaddr = 2`, eine öffentliche Adresse mit `temporary`, eine temporäre Quelladresse in der Route und `FOUND` beim Java-Test. Der Test nach einem Neustart ist für diesen Pi noch offen; dabei wird auch geprüft, ob eine andere Netzwerkkonfiguration den Kernel-Wert überschreibt.
-
-| Neuer Befund auf dem Pi | Aussage und nächster Versuch |
-| --- | --- |
-| HTTP/1.1 erfolgreich, HTTP/2 mit 403 | Die Protokollvarianten werden unterschiedlich behandelt. Der Java-Client verwendet bereits HTTP/1.1; den JAR-Test separat vergleichen. |
-| Beide HTTP-Versionen mit 403 | HTTP/2 allein erklärt den Fehler nicht. Dieselbe Ziel-IP und dasselbe JAR mit Temurin 25 vergleichen. |
-| Temurin 25 erfolgreich, bisheriges Java mit Fehler | JVM-/TLS-Unterschiede sind ein Kandidat; bei identischen Bedingungen wiederholen. |
-| Chromium erfolgreich, curl und Java mit 403 | Browser-spezifisches Verhalten ist ein Kandidat. Das belegt noch keine einzelne TLS- oder JavaScript-Ursache; einen automatisierten Browserzugriff separat testen. |
-| Auch Chromium mit 403 | Mit Zeitpunkt, CDN-Request-ID und Vergleichsergebnissen den Betreiber um Prüfung oder offiziellen Datenzugang bitten. |
+Damit ist der Einfluss der Quelladresse für diese Versuche belegt. Welche Schutzregel auf der Seite dafür verantwortlich war, bleibt unbekannt. Für den Docker-Betrieb auf diesem Pi wird die funktionierende Host-Konfiguration wie oben beschrieben verwendet.
 
 ### Zugriffspfad und Protokollierung
 

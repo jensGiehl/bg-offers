@@ -43,3 +43,42 @@ jobs:
             ghcr.io/jensgiehl/bg-offers:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify container startup on both architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'docker rm -f bg-offers-smoke >/dev/null 2>&1 || true' EXIT
+          for architecture in amd64 arm64; do
+            data_directory=$(mktemp -d)
+            sudo chown 10001:10001 "$data_directory"
+            docker run -d \
+              --name bg-offers-smoke \
+              --platform "linux/$architecture" \
+              --network host \
+              --mount "type=bind,source=$data_directory,target=/app/data" \
+              -e SERVER_PORT=8089 \
+              -e STARTUP_SYSTEM_CHECK_ENABLED=false \
+              -e SPIELE_OFFENSIVE_ENABLED=false \
+              -e MILAN_ENABLED=false \
+              -e BGG_MARKET_ENABLED=false \
+              -e UNKNOWNS_ENABLED=false \
+              "ghcr.io/jensgiehl/bg-offers:sha-${{ github.sha }}"
+            ready=false
+            for attempt in {1..60}; do
+              if curl --fail --silent --output /dev/null http://127.0.0.1:8089/; then
+                ready=true
+                break
+              fi
+              if [ "$(docker inspect --format '{{.State.Running}}' bg-offers-smoke)" != true ]; then
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ready" != true ]; then
+              docker logs bg-offers-smoke
+              exit 1
+            fi
+            sudo test -s "$data_directory/bg-offers.mv.db"
+            docker rm -f bg-offers-smoke
+          done

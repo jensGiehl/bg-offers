@@ -9,9 +9,10 @@ RUN mvn --batch-mode --no-transfer-progress clean package
 FROM eclipse-temurin:25-jre
 
 ARG GIT_COMMIT=unknown
-ENV GIT_COMMIT=${GIT_COMMIT}
+ENV GIT_COMMIT=${GIT_COMMIT} \
+    DB_PATH=/app/data/bg-offers
 
-RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home --home-dir /app app
 WORKDIR /app
 COPY --from=build /workspace/target/bg-offers-*.jar app.jar
 RUN mkdir /app/data && chown -R app:app /app

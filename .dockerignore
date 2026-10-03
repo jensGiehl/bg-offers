@@ -1,6 +1,10 @@
 target
 data
+diagnostics
 .git
 .idea
 *.iml
 *.log
+.env
+.env.*
+.codex-deploy
