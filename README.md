@@ -172,7 +172,7 @@ Die Web-Oberfläche ist anschließend unter `http://localhost:8089` erreichbar. 
 
 ### Docker über VPN beziehungsweise WireGuard betreiben
 
-brettspiel-angebote.de scheint Anfragen von typischen Cloud- und Rechenzentrums-IPs zu sperren. Läuft `bg-offers` auf einem Cloud-Server, sollte der gesamte ausgehende Netzwerkverkehr des Anwendungscontainers deshalb über ein VPN geführt werden. Besonders geeignet ist ein WireGuard-Tunnel zur eigenen FRITZ!Box: Die Abrufe verlassen das Internet dann über den heimischen Anschluss. Läuft Docker bereits zu Hause hinter dieser FRITZ!Box, ist kein zusätzlicher Tunnel erforderlich.
+Ein HTTP 403 allein belegt keine Sperre der Ausgangs-IP. Als Ursachen kommen unter anderem Schutzregeln für die konkrete Anfrage, den TLS-Client oder den Netzwerkausgang infrage. Ein VPN ist ein möglicher Vergleichstest, wenn der Netzwerkausgang als Einflussfaktor untersucht werden soll; es garantiert keinen erfolgreichen Abruf. Ein WireGuard-Tunnel zur eigenen FRITZ!Box lässt die Abrufe über den heimischen Anschluss laufen. Auch im Heimnetz können einzelne Geräte unterschiedliche Ergebnisse liefern.
 
 In der FRITZ!Box wird unter **Internet → Freigaben → VPN (WireGuard) → WireGuard-Verbindung hinzufügen → Einzelgerät verbinden** eine eigene Verbindung für den Docker-Host angelegt. Anschließend wird die Konfigurationsdatei heruntergeladen. Die FRITZ!Box benötigt dafür eine öffentliche IPv4-Adresse oder eine per IPv6 erreichbare Verbindung; der Docker-Host muss das jeweilige Protokoll ebenfalls nutzen können. Eine ausführliche Anleitung bietet [FRITZ!](https://fritz.com/apps/knowledge-base/FRITZ-Box-7682/3685_WireGuard-VPN-zur-FRITZ-Box-am-Computer-einrichten).
 
@@ -260,6 +260,88 @@ Remove-Item Env:RUN_LIVE_PRICE_COMPARISON_TEST
 Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Systemcheck mit Erfolgs-, Leer- und Fehlerfällen, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Benachrichtigung nur bei einem günstigeren Market-Preis, den unknowns.de-Parser und dessen reine Titel-/Link-Meldungen, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Preisvergleichsablauf aus Startseite, Suche und Weiterleitungsziel, die Cookie-Weitergabe einschließlich `bunny_shield*`, die Kontrolle der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
 ## Hinweise zu externen Seiten
+
+### HTTP 403 auf Windows und Raspberry Pi vergleichen
+
+Die Diagnosewerkzeuge führen gezielte Abrufe aus. Die curl-Diagnose benötigt Python 3 und curl, aber keine zusätzlichen Python-Pakete. Sie verwendet die Browser-Header aus `scripts/price-comparison.curl`, passend zu den aktuellen Standardwerten des Java-Clients. `Accept-Encoding` entspricht den vom Apache-Client ergänzten Kompressionsformaten. Jeder Test lädt ausschließlich die Startseite mit einer frischen Verbindung, ohne Cookies, Redirect-Following oder Wiederholungen. Standardmäßig werden IPv6 mit HTTP/1.1, IPv6 mit HTTP/2 und IPv4 mit HTTP/1.1 verglichen. HTTP/2 wird übersprungen, wenn curl es nicht unterstützt; bei einer Aushandlung von HTTP/1.1 steht die tatsächlich verwendete Version im Bericht. Die Optionen sind in der [curl-Dokumentation](https://curl.se/docs/manpage.html) beschrieben.
+
+Auf dem Raspberry Pi im Projektverzeichnis:
+
+```bash
+python3 scripts/diagnose-price-comparison.py
+```
+
+Unter Windows:
+
+```powershell
+python scripts/diagnose-price-comparison.py
+```
+
+Wenn die Änderungen noch ausschließlich im Windows-Workspace liegen, müssen zunächst die beiden Dateien `scripts/diagnose-price-comparison.py` und `scripts/price-comparison.curl` zusammen in das Verzeichnis `scripts/` des Pi-Checkouts übertragen werden. Für den folgenden Java-Test wird zusätzlich das neu gebaute JAR benötigt.
+
+Der Bericht wird als UTF-8-JSON unter `diagnostics/` gespeichert; dieses Verzeichnis ist von Git ausgeschlossen. Er enthält curl-Version einschließlich TLS-Bibliothek, Java-Version, Adressfamilie, lokale und entfernte Verbindungsadresse, tatsächliche HTTP-Version, ausgewählte Antwort-Header einschließlich CDN-Request-ID sowie Größe und SHA-256 des empfangenen Antwortkörpers. Cookie-Werte und HTML-Inhalte werden nicht in den Bericht übernommen; die temporären Rohdateien werden nach jedem Test gelöscht. `wire_body_bytes` und `wire_body_sha256` beziehen sich auf den möglicherweise komprimierten Körper und sind deshalb nicht direkt mit dekomprimierten Java-Antwortgrößen vergleichbar. `local_ip` ist die lokale Socket-Adresse und kann bei IPv4 hinter NAT eine private Adresse sein. Die Diagnose deaktiviert die normale curl-Konfigurationsdatei und umgeht Umgebungs-Proxys ausdrücklich, damit ein direkter Netzwerktest entsteht.
+
+Nur den bisher fehlenden IPv6-/HTTP/1.1-Test ausführen:
+
+```bash
+python3 scripts/diagnose-price-comparison.py --only ipv6-http1
+```
+
+Der gleiche Einzeltest ohne Python:
+
+```bash
+curl --disable --config scripts/price-comparison.curl \
+  --noproxy '*' --ipv6 --http1.1 --silent --show-error \
+  --connect-timeout 10 --max-time 30 --output /dev/null \
+  --write-out 'HTTP=%{http_code} Version=%{http_version} Lokal=%{local_ip} Ziel=%{remote_ip}\n'
+```
+
+Bei weiterhin unterschiedlichen Ergebnissen kann die im Windows-Bericht beobachtete **entfernte** IPv6-Adresse auf dem Pi als Ziel festgelegt werden. Beim lokalen Test am 03.10.2026 war das `2400:52e0:1e00:2::1331:1`; CDN-Adressen können sich ändern, deshalb möglichst einen zeitnahen Windows-Bericht verwenden:
+
+```bash
+python3 scripts/diagnose-price-comparison.py \
+  --only ipv6-http1 --remote-ip 2400:52e0:1e00:2::1331:1
+```
+
+`--remote-ip` verwendet curl `--resolve`; Hostname, Zertifikatsprüfung und TLS-SNI bleiben erhalten. Dies reduziert DNS-bedingte Zielunterschiede, garantiert bei einem CDN aber keinen identischen physischen Server. Mit `--source-ip` kann optional eine **bereits am jeweiligen Gerät konfigurierte** lokale Quelladresse ausgewählt werden. Eine Windows-Adresse darf dabei nicht einfach auf dem Pi verwendet werden. Das Skript filtert die Testvarianten passend zur Adressfamilie der vorgegebenen IP.
+
+Ein zusätzlicher Vergleich mit ausschließlich TLS 1.2 ist möglich:
+
+```bash
+python3 scripts/diagnose-price-comparison.py --tls12
+```
+
+Für den Java-Vergleich gibt es einen Diagnosemodus im normalen ausführbaren JAR. Er startet keinen Spring-Kontext, Webserver, Scheduler, Datenbankzugriff oder Telegram-Versand. Er verwendet den bestehenden Dokument-Client samt Startseite, Cookie-Sitzung, Suche und Detailseite und sucht genau einmal nach „Scythe“. Automatische Wiederholungen sind deaktiviert. Die DNS-Ausgabe zeigt nur die Kandidatenreihenfolge, nicht die tatsächlich aufgebaute Verbindung. Verwendet werden die im JAR enthaltene `application.yml` und deren Umgebungsvariablen; externe Spring-Konfigurationsdateien und zusätzliche Spring-Kommandozeilenoptionen werden in diesem Modus nicht eingelesen.
+
+Unter Windows bauen und testen:
+
+```powershell
+mvn package
+Get-FileHash target/bg-offers-0.0.1-SNAPSHOT.jar -Algorithm SHA256
+java -jar target/bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
+```
+
+**Dasselbe gebaute JAR** auf den Pi kopieren und dort zunächst mit der vorhandenen Java-Version, anschließend mit Temurin 25 möglichst im gleichen Patchstand wie Windows ausführen. Die JAR-Hashes müssen übereinstimmen; auf dem Pi hierfür nicht erneut bauen:
+
+```bash
+sha256sum bg-offers-0.0.1-SNAPSHOT.jar
+java -jar bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
+/pfad/zu/temurin-25/bin/java -jar bg-offers-0.0.1-SNAPSHOT.jar --diagnose-price-comparison
+```
+
+Exit-Code `0` bedeutet einen gefundenen Preis, `2` einen erfolglosen Preisvergleich. Fehler vor dem Preisvergleich, beispielsweise bei der DNS-Auflösung, führen zu einem anderen Fehler-Exit-Code. `--jar /pfad/zum/bg-offers-0.0.1-SNAPSHOT.jar` ergänzt bei der Python-Diagnose den JAR-Hash im JSON-Bericht. Die dort ausgegebene Java-Version gehört zu `java` im `PATH`; bei Tests mit einem absoluten Java-Pfad ist die Java-Ausgabe des Diagnosemodus maßgeblich.
+
+Am 03.10.2026 wurde im Windows-Workspace mit Temurin `25.0.3+9` beobachtet: Der bestehende Java-Live-Test war erfolgreich; curl/Schannel lieferte bei HTTP/1.1 über IPv6 HTTP 200 und über IPv4 HTTP 403. Der zusätzliche IPv6-Test mit TLS 1.2 lieferte ebenfalls HTTP 200. Windows-curl unterstützte kein HTTP/2. Diese Ergebnisse sind eine Vergleichsbasis und belegen keine Sperre der Pi-Adresse.
+
+| Neuer Befund auf dem Pi | Aussage und nächster Versuch |
+| --- | --- |
+| HTTP/1.1 erfolgreich, HTTP/2 mit 403 | Die Protokollvarianten werden unterschiedlich behandelt. Der Java-Client verwendet bereits HTTP/1.1; den JAR-Test separat vergleichen. |
+| Beide HTTP-Versionen mit 403 | HTTP/2 allein erklärt den Fehler nicht. Dieselbe Ziel-IP und dasselbe JAR mit Temurin 25 vergleichen. |
+| Temurin 25 erfolgreich, bisheriges Java mit Fehler | JVM-/TLS-Unterschiede sind ein Kandidat; bei identischen Bedingungen wiederholen. |
+| Chromium erfolgreich, curl und Java mit 403 | Browser-spezifisches Verhalten ist ein Kandidat. Das belegt noch keine einzelne TLS- oder JavaScript-Ursache; einen automatisierten Browserzugriff separat testen. |
+| Auch Chromium mit 403 | Mit Zeitpunkt, CDN-Request-ID und Vergleichsergebnissen den Betreiber um Prüfung oder offiziellen Datenzugang bitten. |
+
+### Zugriffspfad und Protokollierung
 
 Die Anwendung wertet die HTML-Detailseiten von brettspiel-angebote.de aus. Dafür gibt es genau eine Implementierung von `PriceComparisonClient`; sie kapselt den einzigen Zugriffspfad und verwendet Springs `RestClient` mit Apache HttpClient, konsistenten Browser- und Fetch-Headern sowie einem gemeinsamen Cookie-Speicher. Ein eigener DNS-Resolver bevorzugt für diesen Client IPv6 und behält IPv4 als Fallback. Das ist wichtig, weil der vorgeschaltete Schutzdienst einen Zugriff über IPv4 mit HTTP 403 ablehnen kann, während derselbe Aufruf über IPv6 funktioniert. Die übrigen externen Clients der Anwendung werden von dieser Präferenz nicht beeinflusst. Der allgemeine `HttpDocumentClient` ist nicht Teil dieses Preisvergleichspfads und lehnt Aufrufe an den konfigurierten Preisvergleichs-Ursprung ausdrücklich ab. Zuerst wird die Startseite geladen, danach `/suche/?s=Suchbegriff` ohne automatische Weiterleitung aufgerufen und anschließend die URL aus dem `Location`-Header über HTTP/1.1 geladen. Handelt es sich dabei um eine Suchergebnisliste, wählt der Client den Eintrag mit der angeforderten BoardGameGeek-ID und lädt dessen Detailseite. Weiterleitungen und Treffer auf einem anderen Ursprung werden abgelehnt. `If-Modified-Since` wird bewusst nicht gesendet, damit der Client keine leere `304 Not Modified`-Antwort erhält. Jsoup verarbeitet anschließend ausschließlich die geladenen Inhalte und führt kein JavaScript aus. Verlangt ein vorgeschalteter Schutzdienst dennoch eine JavaScript-Prüfung, wird der Abruf als technischer Fehler protokolliert. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können ebenfalls einzelne Abrufe fehlschlagen. Für brettspiel-angebote.de und BoardGameGeek gibt es zusätzlich tägliche Prüfungen mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.
 

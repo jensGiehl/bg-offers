@@ -1,5 +1,7 @@
 target/
 data/
+diagnostics/
+scripts/__pycache__/
 .idea/
 *.iml
 *.log
