@@ -185,12 +185,19 @@ class PriceComparisonDocumentClientTest {
 
     @Test
     void logsThatAForbiddenResponseOccurredWhileLoadingTheLandingPage(CapturedOutput output) throws Exception {
+        var connection = new AtomicReference<PriceComparisonHttpClient.ConnectionDetails>();
+        var clientAddress = new AtomicReference<InetSocketAddress>();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/", exchange -> respond(exchange, 403, "text/html", "Forbidden"));
+        server.createContext("/", exchange -> {
+            clientAddress.set(exchange.getRemoteAddress());
+            exchange.getResponseHeaders().set("CDN-RequestId", "test-request-id");
+            exchange.getResponseHeaders().add("Set-Cookie", "session=private-value; Path=/; HttpOnly");
+            respond(exchange, 403, "text/html", "Forbidden");
+        });
         server.start();
         try {
             var baseUri = URI.create("http://localhost:%d/".formatted(server.getAddress().getPort()));
-            var client = new PriceComparisonDocumentClient(properties(baseUri));
+            var client = new PriceComparisonDocumentClient(properties(baseUri), connection::set);
 
             assertThatThrownBy(() -> client.search(baseUri.resolve("suche/?s=scythe")))
                     .isInstanceOf(SourceAccessException.class)
@@ -200,6 +207,17 @@ class PriceComparisonDocumentClientTest {
                     .contains("HTTP=403")
                     .contains("Content-Type=text/html")
                     .contains("Bytes=9");
+            assertThat(connection.get().statusCode()).isEqualTo(403);
+            assertThat(connection.get().protocol()).isEqualTo("HTTP/1.1");
+            assertThat(connection.get().localAddress()).isEqualTo(clientAddress.get());
+            assertThat(connection.get().remoteAddress()).isInstanceOfSatisfying(InetSocketAddress.class, address -> {
+                assertThat(address.getAddress().isLoopbackAddress()).isTrue();
+                assertThat(address.getPort()).isEqualTo(server.getAddress().getPort());
+            });
+            assertThat(connection.get().tlsProtocol()).isNull();
+            assertThat(connection.get().cipherSuite()).isNull();
+            assertThat(connection.get().requestId()).isEqualTo("test-request-id");
+            assertThat(connection.get().toString()).doesNotContain("session", "private-value");
         } finally {
             server.stop(0);
         }

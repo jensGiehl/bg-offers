@@ -5,6 +5,7 @@ import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.cookie.BasicCookieStore;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.protocol.HttpCoreContext;
 import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,12 +13,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.net.SocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 final class PriceComparisonHttpClient {
@@ -29,10 +32,10 @@ final class PriceComparisonHttpClient {
     private final RestClient restClient;
     private final String userAgent;
 
-    PriceComparisonHttpClient(OfferProperties properties) {
+    PriceComparisonHttpClient(OfferProperties properties, Consumer<ConnectionDetails> connectionObserver) {
         userAgent = properties.http().userAgent();
         cookieStore = new BasicCookieStore();
-        restClient = createClient(properties);
+        restClient = createClient(properties, connectionObserver);
     }
 
     Response get(
@@ -76,7 +79,7 @@ final class PriceComparisonHttpClient {
         cookieStore.clear();
     }
 
-    private RestClient createClient(OfferProperties properties) {
+    private RestClient createClient(OfferProperties properties, Consumer<ConnectionDetails> connectionObserver) {
         var timeout = Timeout.ofMilliseconds(properties.http().timeout().toMillis());
         var connectionConfig = ConnectionConfig.custom()
                 .setConnectTimeout(timeout)
@@ -90,6 +93,20 @@ final class PriceComparisonHttpClient {
                 .setConnectionManager(connectionManager)
                 .setDefaultCookieStore(cookieStore)
                 .disableRedirectHandling()
+                .addResponseInterceptorLast((response, entity, context) -> {
+                    var coreContext = HttpCoreContext.cast(context);
+                    var endpoint = coreContext.getEndpointDetails();
+                    var tls = coreContext.getSSLSession();
+                    var requestId = response.getFirstHeader("CDN-RequestId");
+                    connectionObserver.accept(new ConnectionDetails(
+                            response.getCode(),
+                            response.getVersion().toString(),
+                            endpoint == null ? null : endpoint.getLocalAddress(),
+                            endpoint == null ? null : endpoint.getRemoteAddress(),
+                            tls == null ? null : tls.getProtocol(),
+                            tls == null ? null : tls.getCipherSuite(),
+                            requestId == null ? null : requestId.getValue()));
+                })
                 .build();
         var requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
         requestFactory.setConnectionRequestTimeout(properties.http().timeout());
@@ -120,6 +137,16 @@ final class PriceComparisonHttpClient {
         var sortedHeaders = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
         headers.forEach((name, values) -> sortedHeaders.put(name, List.copyOf(values)));
         return new LinkedHashMap<>(sortedHeaders);
+    }
+
+    record ConnectionDetails(
+            int statusCode,
+            String protocol,
+            SocketAddress localAddress,
+            SocketAddress remoteAddress,
+            String tlsProtocol,
+            String cipherSuite,
+            String requestId) {
     }
 
     record Response(
