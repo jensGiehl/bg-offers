@@ -7,6 +7,8 @@ import de.agiehl.bgoffers.scraper.SourceAccessException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -57,6 +59,34 @@ class PriceComparisonServiceTest {
 
         assertThat(result.status()).isEqualTo(LookupStatus.FOUND);
         verify(client).search(URI.create(searchUrl), null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "  Die Glasstraße (German first edition)  ",
+            "Die (2026) Glasstraße (German (first) edition)"
+    })
+    void removesParenthesizedContentBeforeEncodingSearch(String gameName) {
+        var searchUri = URI.create("https://www.brettspiel-angebote.de/suche/?s=Die+Glasstra%C3%9Fe");
+        var client = mock(PriceComparisonDocumentClient.class);
+        when(client.search(searchUri, 143693)).thenReturn(document("""
+                <div itemprop="offers"><meta itemprop="lowPrice" content="29.99"></div>
+                """, "https://www.brettspiel-angebote.de/spiele/die-glasstrasse/"));
+        var service = new PriceComparisonService(
+                client, TestProperties.create(), new GameNameNormalizer());
+
+        assertThat(service.lookup(gameName, 143693).status()).isEqualTo(LookupStatus.FOUND);
+        verify(client).search(searchUri, 143693);
+    }
+
+    @Test
+    void skipsSearchWhenOnlyParenthesizedContentRemains() {
+        var client = mock(PriceComparisonDocumentClient.class);
+        var service = new PriceComparisonService(
+                client, TestProperties.create(), new GameNameNormalizer());
+
+        assertThat(service.lookup(" (123) (German first edition) ").status()).isEqualTo(LookupStatus.NOT_FOUND);
+        verifyNoInteractions(client);
     }
 
     @Test

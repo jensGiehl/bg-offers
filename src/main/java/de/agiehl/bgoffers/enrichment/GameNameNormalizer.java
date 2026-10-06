@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 public class GameNameNormalizer {
 
     private static final Pattern PARENTHESIZED_WORDS = Pattern.compile("\\([^)]*\\p{L}[^)]*\\)");
+    private static final Pattern PARENTHESIZED_CONTENT = Pattern.compile("\\([^()]*\\)");
     private static final Pattern LANGUAGE_PREFIX = Pattern.compile(
             "(?i)^(?:de|deutsch|german|en|engl|englisch|english|international)\\s*[:|/-]\\s*");
     private static final Pattern BUNDLE_SUFFIX = Pattern.compile("(?i)\\s+(?:inkl\\..*|bundle|set)\\s*$");
@@ -30,6 +31,14 @@ public class GameNameNormalizer {
         var withoutParentheses = PARENTHESIZED_WORDS.matcher(withoutPrefix).replaceAll(" ");
         var withoutNoise = SEARCH_NOISE.matcher(withoutParentheses).replaceAll(" ");
         return BUNDLE_SUFFIX.matcher(withoutNoise).replaceFirst("").replaceAll("\\s+", " ").trim();
+    }
+
+    public String priceComparisonSearchTerm(String value) {
+        var withoutParentheses = value == null ? "" : value;
+        while (PARENTHESIZED_CONTENT.matcher(withoutParentheses).find()) {
+            withoutParentheses = PARENTHESIZED_CONTENT.matcher(withoutParentheses).replaceAll(" ");
+        }
+        return searchTerm(withoutParentheses);
     }
 
     public boolean isBundle(String value) {

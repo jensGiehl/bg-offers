@@ -24,6 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
+import java.util.function.UnaryOperator;
 
 @Controller
 public class OfferController {
@@ -71,9 +72,11 @@ public class OfferController {
 
     @GetMapping("/fehlende-treffer")
     public String missingLookups(Model model) {
-        var bggTerms = missingTerms(repository.findByBggStatusOrderByNameAsc(LookupStatus.NOT_FOUND));
+        var bggTerms = missingTerms(
+                repository.findByBggStatusOrderByNameAsc(LookupStatus.NOT_FOUND), normalizer::searchTerm);
         var comparisonTerms = missingTerms(
-                repository.findByComparisonStatusOrderByNameAsc(LookupStatus.NOT_FOUND));
+                repository.findByComparisonStatusOrderByNameAsc(LookupStatus.NOT_FOUND),
+                normalizer::priceComparisonSearchTerm);
         model.addAttribute("bggTerms", bggTerms);
         model.addAttribute("comparisonTerms", comparisonTerms);
         return "missing-lookups";
@@ -114,11 +117,11 @@ public class OfferController {
         return "offer";
     }
 
-    private List<String> missingTerms(List<Offer> offers) {
+    private List<String> missingTerms(List<Offer> offers, UnaryOperator<String> searchTermNormalizer) {
         var terms = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
         offers.stream()
                 .map(Offer::getName)
-                .map(normalizer::searchTerm)
+                .map(searchTermNormalizer)
                 .filter(term -> !term.isBlank())
                 .forEach(terms::add);
         return List.copyOf(terms);

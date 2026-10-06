@@ -43,7 +43,7 @@ public class PriceComparisonService {
             return PriceComparisonResult.withStatus(LookupStatus.SKIPPED);
         }
         try {
-            var searchTerm = normalizer.searchTerm(gameName);
+            var searchTerm = normalizer.priceComparisonSearchTerm(gameName);
             if (searchTerm.isBlank()) {
                 return PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);
             }

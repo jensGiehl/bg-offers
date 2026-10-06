@@ -46,6 +46,7 @@ Für diesen Stand war `mvn --strict-checksums clean verify` mit JDK 27 erfolgrei
 - Prüft das Schnäppchenforum von unknowns.de auf neue Themen und speichert beziehungsweise meldet dafür Titel, Link und das Forumslogo. BoardGameGeek und brettspiel-angebote.de werden für diese Einträge nicht aufgerufen.
 - Speichert Angebote, Zeitpunkte, BGG-Werte, Vergleichspreise und den Benachrichtigungsstatus dauerhaft in H2.
 - Bereinigt Suchbegriffe für BoardGameGeek und brettspiel-angebote.de: führende und folgende Leerzeichen, Klammerzusätze mit Wörtern sowie die Begriffe „Stapelspiel“, „Würfelspiel“ und „Jubiläumsausgabe“ werden entfernt.
+- Für brettspiel-angebote.de werden alle Klammerzusätze einschließlich der Klammern entfernt, auch rein numerische und verschachtelte Zusätze. Aus „Die Glasstraße (German first edition)“ wird der Suchbegriff „Die Glasstraße“.
 - Überspringt BoardGameGeek und den Preisvergleich vollständig, wenn der Angebotsname „Bundle“ enthält.
 - Prüft bei vorhandener BoardGameGeek-ID, dass die von der Preisvergleichssuche gelieferte Detailseite zum selben Spiel gehört.
 - Speichert neue Angebote und Preisänderungen mit einer kompakten Vorschau sowie dem damaligen Suchstatus bei brettspiel-angebote.de und BoardGameGeek im Activity Log.

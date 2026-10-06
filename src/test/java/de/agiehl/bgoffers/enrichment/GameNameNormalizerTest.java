@@ -29,6 +29,17 @@ class GameNameNormalizerTest {
     }
 
     @Test
+    void removesAllParenthesizedContentForPriceComparison() {
+        assertThat(normalizer.priceComparisonSearchTerm("  Die Glasstraße (German first edition)  "))
+                .isEqualTo("Die Glasstraße");
+        assertThat(normalizer.priceComparisonSearchTerm("Die (2026) Glasstraße () (German (first) edition)"))
+                .isEqualTo("Die Glasstraße");
+        assertThat(normalizer.priceComparisonSearchTerm("(German first edition) (123)"))
+                .isEmpty();
+        assertThat(normalizer.priceComparisonSearchTerm(null)).isEmpty();
+    }
+
+    @Test
     void recognizesBundleBeforeSearchNormalization() {
         assertThat(normalizer.isBundle("  Scythe Bundle (deutsch) ")).isTrue();
         assertThat(normalizer.isBundle("Bundle-Angebot")).isTrue();
