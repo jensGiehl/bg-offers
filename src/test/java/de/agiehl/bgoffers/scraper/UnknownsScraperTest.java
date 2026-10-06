@@ -48,7 +48,7 @@ class UnknownsScraperTest {
         assertThat(offers).hasSize(2).allSatisfy(offer -> {
             assertThat(offer.source()).isEqualTo(OfferSource.UNKNOWNS);
             assertThat(offer.type()).isEqualTo(OfferType.FORUM_POST);
-            assertThat(offer.imageUrl()).isNull();
+            assertThat(offer.imageUrl()).isEqualTo(OfferSource.UNKNOWNS_LOGO_URL);
             assertThat(offer.price()).isNull();
             assertThat(offer.availability()).isNull();
             assertThat(offer.availableQuantity()).isNull();

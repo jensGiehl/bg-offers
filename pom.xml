@@ -23,6 +23,7 @@
         <jsoup.version>1.21.2</jsoup.version>
         <bootstrap.version>5.3.8</bootstrap.version>
         <bootstrap-icons.version>1.13.1</bootstrap-icons.version>
+        <batik.version>1.19</batik.version>
         <thymeleaf-extras.version>3.0.4.RELEASE</thymeleaf-extras.version>
     </properties>
 
@@ -34,6 +35,11 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-transcoder</artifactId>
+            <version>${batik.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>

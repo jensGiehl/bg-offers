@@ -2,10 +2,12 @@ package de.agiehl.bgoffers.notification;
 
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.Offer;
+import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.service.ActivityLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -19,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 public class TelegramOrConsoleNotifier implements OfferNotifier {
@@ -28,13 +31,22 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
     private final OfferProperties properties;
     private final HttpClient httpClient;
     private final ActivityLogService activityLogService;
+    private final TelegramOfferImage offerImage;
 
-    public TelegramOrConsoleNotifier(OfferProperties properties, ActivityLogService activityLogService) {
+    @Autowired
+    public TelegramOrConsoleNotifier(OfferProperties properties, ActivityLogService activityLogService,
+                                     TelegramOfferImage offerImage) {
+        this(properties, activityLogService, offerImage, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(15))
+                .build());
+    }
+
+    TelegramOrConsoleNotifier(OfferProperties properties, ActivityLogService activityLogService,
+                              TelegramOfferImage offerImage, HttpClient httpClient) {
         this.properties = properties;
         this.activityLogService = activityLogService;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(15))
-                .build();
+        this.offerImage = offerImage;
+        this.httpClient = httpClient;
     }
 
     @Override
@@ -43,17 +55,13 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
             LOGGER.info("ANGEBOTSMELDUNG\n{}", plainText(offer));
             return true;
         }
-        if (offer.getType() == OfferType.SPIELESCHMIEDE && present(offer.getImageUrl())) {
-            return send("sendPhoto", fields("chat_id", properties.telegram().chatId(), "photo", offer.getImageUrl()));
-        }
-
         var message = htmlText(offer);
-        if (present(offer.getImageUrl())) {
-            return send("sendPhoto", fields(
-                    "chat_id", properties.telegram().chatId(),
-                    "photo", offer.getImageUrl(),
-                    "caption", message,
-                    "parse_mode", "HTML"));
+        if (present(offer.getImageUrl()) || offer.getSource() == OfferSource.UNKNOWNS) {
+            var fields = fields("chat_id", properties.telegram().chatId());
+            if (offer.getType() != OfferType.SPIELESCHMIEDE) {
+                fields.addAll(fields("caption", message, "parse_mode", "HTML"));
+            }
+            return sendPhoto(offer, fields);
         }
         return send("sendMessage", fields(
                 "chat_id", properties.telegram().chatId(),
@@ -198,15 +206,49 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
     }
 
     private boolean send(String method, List<Field> fields) {
-        var endpoint = URI.create("https://api.telegram.org/bot" + properties.telegram().botToken() + "/" + method);
         var body = fields.stream()
                 .map(field -> encode(field.name()) + "=" + encode(field.value()))
                 .reduce((left, right) -> left + "&" + right)
                 .orElse("");
+        return send(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8),
+                "application/x-www-form-urlencoded; charset=UTF-8");
+    }
+
+    private boolean sendPhoto(Offer offer, List<Field> fields) {
+        try {
+            var photo = offerImage.render(offer);
+            var boundary = "bg-offers-" + UUID.randomUUID();
+            var parts = new ArrayList<HttpRequest.BodyPublisher>();
+            for (var field : fields) {
+                parts.add(HttpRequest.BodyPublishers.ofString(
+                        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field.name()
+                                + "\"\r\n\r\n" + field.value() + "\r\n", StandardCharsets.UTF_8));
+            }
+            parts.add(HttpRequest.BodyPublishers.ofString(
+                    "--" + boundary + "\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"offer.png\""
+                            + "\r\nContent-Type: image/png\r\n\r\n", StandardCharsets.UTF_8));
+            parts.add(HttpRequest.BodyPublishers.ofByteArray(photo));
+            parts.add(HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8));
+            return send("sendPhoto", HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new)),
+                    "multipart/form-data; boundary=" + boundary);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            LOGGER.error("Telegram-Bildverarbeitung wurde unterbrochen");
+            activityLogService.recordTelegramDelivery(false);
+            return false;
+        } catch (IOException | IllegalArgumentException exception) {
+            LOGGER.error("Telegram-Bildverarbeitung ist fehlgeschlagen: {}", exception.getMessage());
+            activityLogService.recordTelegramDelivery(false);
+            return false;
+        }
+    }
+
+    private boolean send(String method, HttpRequest.BodyPublisher body, String contentType) {
+        var endpoint = URI.create("https://api.telegram.org/bot" + properties.telegram().botToken() + "/" + method);
         var request = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .header("Content-Type", contentType)
+                .POST(body)
                 .build();
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

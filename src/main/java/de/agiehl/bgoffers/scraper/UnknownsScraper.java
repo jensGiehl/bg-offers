@@ -67,7 +67,7 @@ public class UnknownsScraper implements OfferScraper {
                         OfferType.FORUM_POST,
                         entry.getValue(),
                         entry.getKey(),
-                        null,
+                        OfferSource.UNKNOWNS_LOGO_URL,
                         null,
                         null,
                         null,

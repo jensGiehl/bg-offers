@@ -12,7 +12,9 @@ ARG GIT_COMMIT=unknown
 ENV GIT_COMMIT=${GIT_COMMIT} \
     DB_PATH=/app/data/bg-offers
 
-RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home --home-dir /app app
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home --home-dir /app app
 WORKDIR /app
 COPY --from=build /workspace/target/bg-offers-*.jar app.jar
 RUN mkdir /app/data && chown -R app:app /app
