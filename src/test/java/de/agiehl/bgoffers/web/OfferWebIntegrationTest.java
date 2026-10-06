@@ -9,7 +9,9 @@ import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.service.WeeklyReportService;
 import org.junit.jupiter.api.Test;
+import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.url=jdbc:h2:mem:webtest;DB_CLOSE_DELAY=-1",
         "offers.schedule.initial-delay=24h",
         "offers.startup-system-check-enabled=false",
+        "offers.commit-id=0123456789abcdef0123456789abcdef01234567",
         "offers.schedule.crawl-delay=24h"
 })
 @AutoConfigureMockMvc
@@ -35,6 +38,9 @@ class OfferWebIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private BuildProperties buildProperties;
 
     @Autowired
     private OfferRepository repository;
@@ -184,6 +190,15 @@ class OfferWebIntegrationTest {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Test-Gruppendeal")))
+                .andExpect(result -> {
+                    var footer = Jsoup.parse(result.getResponse().getContentAsString()).selectFirst("footer");
+                    var version = footer.selectFirst("code");
+                    var timestamp = footer.selectFirst("time");
+                    assertThat(version.text()).isEqualTo("0123456");
+                    assertThat(version.attr("title")).isEqualTo("0123456789abcdef0123456789abcdef01234567");
+                    assertThat(timestamp.attr("datetime")).isEqualTo(buildProperties.getTime().toString());
+                    assertThat(timestamp.text()).matches("\\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}:\\d{2} MES?Z");
+                })
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Bestpreis")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("16,50 €")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"Meldung versendet\"")))

@@ -1,5 +1,6 @@
 package de.agiehl.bgoffers.web;
 
+import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.ActivityType;
 import de.agiehl.bgoffers.domain.LookupStatus;
@@ -7,6 +8,8 @@ import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.repository.OfferRepository;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -16,23 +19,36 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.TreeSet;
 
 @Controller
 public class OfferController {
 
+    private static final DateTimeFormatter BUILD_TIME_FORMAT = DateTimeFormatter
+            .ofPattern("dd.MM.yyyy HH:mm:ss z", Locale.GERMAN)
+            .withZone(ZoneId.of("Europe/Berlin"));
+
     private final OfferRepository repository;
     private final ActivityLogRepository activityLogRepository;
     private final GameNameNormalizer normalizer;
+    private final String commitId;
+    private final BuildProperties buildProperties;
 
     public OfferController(
             OfferRepository repository,
             ActivityLogRepository activityLogRepository,
-            GameNameNormalizer normalizer) {
+            GameNameNormalizer normalizer,
+            OfferProperties properties,
+            ObjectProvider<BuildProperties> buildProperties) {
         this.repository = repository;
         this.activityLogRepository = activityLogRepository;
         this.normalizer = normalizer;
+        this.commitId = properties.commitId() == null ? "" : properties.commitId().trim();
+        this.buildProperties = buildProperties.getIfAvailable();
     }
 
     @GetMapping("/aktivitaeten")
@@ -80,6 +96,13 @@ public class OfferController {
         model.addAttribute("milanCount", repository.countBySource(OfferSource.MILAN));
         model.addAttribute("bggMarketCount", repository.countBySource(OfferSource.BGG_MARKET));
         model.addAttribute("unknownsCount", repository.countBySource(OfferSource.UNKNOWNS));
+        model.addAttribute("commitId", commitId);
+        model.addAttribute("version", commitId.isBlank() || commitId.equalsIgnoreCase("unknown")
+                ? "unbekannt" : commitId.substring(0, Math.min(7, commitId.length())));
+        var buildTime = buildProperties == null ? null : buildProperties.getTime();
+        model.addAttribute("buildTimestamp", buildTime);
+        model.addAttribute("buildTimestampLabel", buildTime == null
+                ? "unbekannt" : BUILD_TIME_FORMAT.format(buildTime));
         return "index";
     }
 

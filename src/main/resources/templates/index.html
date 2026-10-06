@@ -119,7 +119,15 @@
     </nav>
 </main>
 
-<footer class="container py-4 text-secondary small">Nur Lesezugriff · Aktualisierung alle fünf Minuten</footer>
+<footer class="container py-4 text-secondary small">
+    <div class="border-top pt-3 d-flex flex-column flex-md-row justify-content-between gap-2">
+        <span>Nur Lesezugriff · Aktualisierung alle fünf Minuten</span>
+        <div class="d-flex flex-column flex-sm-row flex-wrap gap-1 gap-sm-3">
+            <span>Version <code class="text-secondary" th:text="${version}" th:title="${commitId}">unbekannt</code></span>
+            <span>Build <time th:datetime="${buildTimestamp}" th:text="${buildTimestampLabel}">unbekannt</time></span>
+        </div>
+    </div>
+</footer>
 <script src="/webjars/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

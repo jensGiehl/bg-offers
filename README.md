@@ -4,6 +4,8 @@ BG Offers sammelt Brettspielangebote von Spiele-Offensive, Milan-Spiele und dem 
 
 Die Anwendung verwendet Java 27, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
 
+Im Footer der Angebotsübersicht stehen die Version als siebenstellige Git-Commit-ID (vollständig im Tooltip) und der Build-Zeitpunkt mit Datum, Uhrzeit und Berliner Zeitzone. Maven schreibt den Zeitpunkt beim Build in das JAR; er bleibt bei Neustarts unverändert. Der Docker-Workflow setzt die Commit-ID automatisch. Bei einem lokalen Start `GIT_COMMIT` auf das Ergebnis von `git rev-parse HEAD` setzen. Fehlt die Commit-ID oder bei einem IDE-Start die Build-Information, erscheint für den jeweiligen Wert „unbekannt“.
+
 ## Abhängigkeitsstand
 
 Die Abhängigkeiten wurden am 6. Oktober 2026 auf verfügbare stabile Versionen geprüft. Spring Boot 4.1.1 bleibt der stabile Parent; dessen Versions-Properties werden für neuere Bibliotheken gezielt überschrieben. Vorabversionen werden nicht verwendet. Quellcode und Dokumentation verwenden UTF-8.
@@ -95,7 +97,7 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 |---|---|---|
 | `INITIAL_IMPORT` | Unterdrückt Angebotsmeldungen für zwei Stunden nach dem Anwendungsstart | `false` |
 | `STARTUP_SYSTEM_CHECK_ENABLED` | Führt den rein lesenden Quellencheck beim Start aus | `true` |
-| `GIT_COMMIT` | Commit-ID für die Statusmeldung des Start-Systemchecks | `unknown` |
+| `GIT_COMMIT` | Commit-ID für die Footer-Version und die Statusmeldung des Start-Systemchecks | `unknown` |
 | `TELEGRAM_BOT_TOKEN` | Token des Telegram-Bots | leer, Ausgabe auf der Konsole |
 | `TELEGRAM_CHAT_ID` | Ziel-Chat oder Kanal | leer, Ausgabe auf der Konsole |
 | `BGG_API_TOKEN` | API-Token für BoardGameGeek | leer, BGG-Status „Nicht konfiguriert“ |
