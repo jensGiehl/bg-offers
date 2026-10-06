@@ -1,19 +1,26 @@
 package de.agiehl.bgoffers.domain;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(
@@ -28,9 +35,12 @@ import java.time.Instant;
                 @Index(name = "idx_offer_last_seen", columnList = "last_seen_at"),
                 @Index(name = "idx_offer_last_changed", columnList = "last_changed_at"),
                 @Index(name = "idx_offer_bgg_status", columnList = "bgg_status"),
-                @Index(name = "idx_offer_comparison_status", columnList = "comparison_status")
+                @Index(name = "idx_offer_comparison_status", columnList = "comparison_status"),
+                @Index(name = "idx_offer_next_lookup", columnList = "next_lookup_at")
         })
 public class Offer {
+
+    public static final int MAXIMUM_LOOKUP_ATTEMPTS = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -105,6 +115,13 @@ public class Offer {
     private Instant lastChangedAt;
 
     private Instant enrichedAt;
+
+    private Instant nextLookupAt;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "offer_lookup_attempts", joinColumns = @JoinColumn(name = "offer_id"))
+    @OrderColumn(name = "attempt_index")
+    private List<LookupAttempt> lookupAttempts = new ArrayList<>();
 
     @Column(length = 1000)
     private String notificationFingerprint;
@@ -300,6 +317,55 @@ public class Offer {
 
     public String getNotificationFingerprint() {
         return notificationFingerprint;
+    }
+
+    public Instant getNextLookupAt() {
+        return nextLookupAt;
+    }
+
+    public void setNextLookupAt(Instant nextLookupAt) {
+        this.nextLookupAt = nextLookupAt;
+    }
+
+    public List<LookupAttempt> getBggSearchAttempts() {
+        return searchAttempts(LookupTarget.BGG);
+    }
+
+    public List<LookupAttempt> getComparisonSearchAttempts() {
+        return searchAttempts(LookupTarget.COMPARISON);
+    }
+
+    public int getMaximumLookupAttempts() {
+        return MAXIMUM_LOOKUP_ATTEMPTS;
+    }
+
+    public void recordLookupAttempt(LookupTarget target, String searchTerm, Instant now, LookupStatus status) {
+        lookupAttempts.add(new LookupAttempt(target, searchTerm, now, status));
+    }
+
+    public void resetLookupAttempts(Instant now) {
+        lookupAttempts.clear();
+        bggStatus = LookupStatus.NOT_REQUESTED;
+        comparisonStatus = LookupStatus.NOT_REQUESTED;
+        nextLookupAt = now;
+    }
+
+    public boolean isBggLookupPending() {
+        return getBggSearchAttempts().size() < MAXIMUM_LOOKUP_ATTEMPTS && retryable(bggStatus);
+    }
+
+    public boolean isComparisonLookupPending() {
+        return getComparisonSearchAttempts().size() < MAXIMUM_LOOKUP_ATTEMPTS
+                && (retryable(comparisonStatus)
+                || comparisonStatus == LookupStatus.FOUND && comparisonBestPrice == null);
+    }
+
+    private List<LookupAttempt> searchAttempts(LookupTarget target) {
+        return lookupAttempts.stream().filter(attempt -> attempt.getTarget() == target).toList();
+    }
+
+    private boolean retryable(LookupStatus status) {
+        return status == LookupStatus.NOT_REQUESTED || status == LookupStatus.NOT_FOUND || status == LookupStatus.ERROR;
     }
 
     public void setNotificationFingerprint(String notificationFingerprint) {

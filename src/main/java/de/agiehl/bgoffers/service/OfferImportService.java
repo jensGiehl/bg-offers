@@ -2,6 +2,7 @@ package de.agiehl.bgoffers.service;
 
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
+import de.agiehl.bgoffers.domain.LookupTarget;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
@@ -137,6 +138,24 @@ public class OfferImportService {
         }
     }
 
+    public void processPendingLookups() {
+        if (!running.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            var now = Instant.now(clock);
+            for (var offer : repository.findTop50ByNextLookupAtLessThanEqualOrderByNextLookupAtAsc(now)) {
+                try {
+                    enrich(offer, offer.getBggId());
+                } catch (RuntimeException exception) {
+                    LOGGER.error("Ausstehende Recherche für {} ist fehlgeschlagen", offer.getName(), exception);
+                }
+            }
+        } finally {
+            running.set(false);
+        }
+    }
+
     private void importSource(OfferScraper scraper) {
         try {
             var offers = scraper.scrape();
@@ -179,11 +198,13 @@ public class OfferImportService {
                 || offer.getType() == OfferType.FORUM_POST
                 || (offer.getSource() != OfferSource.BGG_MARKET && normalizer.isBundle(offer.getName()))) {
             skipEnrichment(offer, now);
+            offer = repository.save(offer);
+            notifyWhenRelevant(offer, now);
         } else {
-            enrich(offer, scraped.bggId(), now);
+            offer.resetLookupAttempts(now);
+            offer = repository.save(offer);
+            offer = enrich(offer, scraped.bggId());
         }
-        offer = repository.save(offer);
-        notifyWhenRelevant(offer, now);
         if (newOffer) {
             activityLogService.recordOfferFound(offer, now);
         } else {
@@ -191,47 +212,44 @@ public class OfferImportService {
         }
     }
 
-    private void enrich(Offer offer, Integer knownBggId, Instant now) {
-        var bgg = lookupBggWithRetries(offer, knownBggId);
-        applyBggResult(offer, bgg);
-
-        var comparison = lookupComparisonWithRetries(offer, bgg.id());
-        applyComparisonResult(offer, comparison);
-        offer.setEnrichedAt(now);
-    }
-
-    private BggResult lookupBggWithRetries(Offer offer, Integer knownBggId) {
-        var result = BggResult.withStatus(LookupStatus.ERROR);
-        var maximumAttempts = Math.max(1, properties.http().maxAttempts());
-        for (var attempt = 1; attempt <= maximumAttempts; attempt++) {
-            result = knownBggId == null
+    private Offer enrich(Offer offer, Integer knownBggId) {
+        if (offer.isBggLookupPending()) {
+            var attempt = offer.getBggSearchAttempts().size() + 1;
+            recordRetry(offer, "BoardGameGeek", attempt);
+            var attemptedAt = Instant.now(clock);
+            var result = knownBggId == null
                     ? bggLookupService.lookup(offer.getName())
                     : bggLookupService.lookupById(knownBggId);
             applyBggResult(offer, result);
-            if (result.status() != LookupStatus.ERROR || attempt == maximumAttempts) {
-                return result;
-            }
-            activityLogService.recordLookupRetry(
-                    offer, "BoardGameGeek", attempt + 1, maximumAttempts);
-            waitBeforeLookupRetry(offer, "BoardGameGeek", attempt + 1, maximumAttempts);
+            offer.recordLookupAttempt(LookupTarget.BGG,
+                    knownBggId == null ? normalizer.searchTerm(offer.getName()) : "BGG-ID: " + knownBggId,
+                    attemptedAt, result.status());
+            offer = repository.save(offer);
         }
-        return result;
+        if (offer.isComparisonLookupPending()) {
+            var attempt = offer.getComparisonSearchAttempts().size() + 1;
+            recordRetry(offer, "brettspiel-angebote.de", attempt);
+            var attemptedAt = Instant.now(clock);
+            var result = priceComparisonService.lookup(offer.getName(), offer.getBggId());
+            applyComparisonResult(offer, result);
+            offer.recordLookupAttempt(LookupTarget.COMPARISON,
+                    normalizer.priceComparisonSearchTerm(offer.getName()), attemptedAt, result.status());
+        }
+        var now = Instant.now(clock);
+        offer.setEnrichedAt(now);
+        var pending = offer.isBggLookupPending() || offer.isComparisonLookupPending();
+        offer.setNextLookupAt(pending ? now.plus(properties.http().lookupRetryDelay()) : null);
+        offer = repository.save(offer);
+        if (!pending) {
+            notifyWhenRelevant(offer, now);
+        }
+        return offer;
     }
 
-    private PriceComparisonResult lookupComparisonWithRetries(Offer offer, Integer bggId) {
-        var result = PriceComparisonResult.withStatus(LookupStatus.ERROR);
-        var maximumAttempts = Math.max(1, properties.http().maxAttempts());
-        for (var attempt = 1; attempt <= maximumAttempts; attempt++) {
-            result = priceComparisonService.lookup(offer.getName(), bggId);
-            applyComparisonResult(offer, result);
-            if (result.status() != LookupStatus.ERROR || attempt == maximumAttempts) {
-                return result;
-            }
-            activityLogService.recordLookupRetry(
-                    offer, "brettspiel-angebote.de", attempt + 1, maximumAttempts);
-            waitBeforeLookupRetry(offer, "brettspiel-angebote.de", attempt + 1, maximumAttempts);
+    private void recordRetry(Offer offer, String target, int attempt) {
+        if (attempt > 1) {
+            activityLogService.recordLookupRetry(offer, target, attempt, Offer.MAXIMUM_LOOKUP_ATTEMPTS);
         }
-        return result;
     }
 
     private void applyBggResult(Offer offer, BggResult bgg) {
@@ -253,22 +271,13 @@ public class OfferImportService {
         applyBggResult(offer, BggResult.withStatus(LookupStatus.SKIPPED));
         applyComparisonResult(offer, PriceComparisonResult.withStatus(LookupStatus.SKIPPED));
         offer.setEnrichedAt(now);
-    }
-
-    private void waitBeforeLookupRetry(Offer offer, String target, int nextAttempt, int maximumAttempts) {
-        var delay = properties.http().lookupRetryDelay();
-        LOGGER.debug("Recherche für {} bei {} wird nach einem Fehler in {} ms mit Versuch {}/{} fortgesetzt",
-                offer.getName(), target, delay.toMillis(), nextAttempt, maximumAttempts);
-        try {
-            Thread.sleep(delay);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Warten auf erneute Recherche wurde unterbrochen", exception);
-        }
+        offer.setNextLookupAt(null);
     }
 
     private void notifyWhenRelevant(Offer offer, Instant now) {
         if (now.isBefore(initialImportEndsAt)) {
+            offer.setNextLookupAt(initialImportEndsAt);
+            repository.save(offer);
             return;
         }
         if (exceedsBestPriceLimit(offer)) {
@@ -287,6 +296,9 @@ public class OfferImportService {
             offer.setNotifiedAt(now);
             repository.save(offer);
             activityLogService.recordOfferSent(offer, now);
+        } else {
+            offer.setNextLookupAt(now.plus(properties.http().lookupRetryDelay()));
+            repository.save(offer);
         }
     }
 

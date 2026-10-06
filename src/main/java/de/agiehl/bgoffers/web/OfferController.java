@@ -114,6 +114,7 @@ public class OfferController {
         var offer = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         model.addAttribute("offer", offer);
+        model.addAttribute("lookupTimeFormat", BUILD_TIME_FORMAT);
         return "offer";
     }
 

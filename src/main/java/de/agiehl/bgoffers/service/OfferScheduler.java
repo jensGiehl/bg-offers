@@ -26,6 +26,13 @@ public class OfferScheduler {
         importService.importAll();
     }
 
+    @Scheduled(
+            initialDelayString = "${offers.schedule.initial-delay}",
+            fixedDelayString = "${offers.schedule.lookup-delay:30s}")
+    public void retryLookups() {
+        importService.processPendingLookups();
+    }
+
     @Scheduled(cron = "${offers.schedule.health-cron}", zone = "Europe/Berlin")
     public void verifyHealth() {
         externalHealthCheckService.verify();

@@ -52,6 +52,10 @@
                                 <div><dt>Status</dt><dd th:text="${offer.comparisonStatus.displayName}">Status</dd></div>
                             </dl>
                             <a th:if="${offer.comparisonUrl != null}" th:href="${offer.comparisonUrl}" target="_blank" rel="noopener">Vergleich öffnen ↗</a>
+                            <div th:if="${offer.comparisonStatus.name() != 'FOUND' or offer.comparisonBestPrice == null}">
+                                <p class="small text-secondary mt-2 mb-0">Suche auf brettspiel-angebote.de</p>
+                                <div th:replace="~{fragments/lookup-progress :: progress(${offer.comparisonSearchAttempts}, ${offer.comparisonLookupPending})}"></div>
+                            </div>
                         </section>
                     </div>
                     <div class="col-12 col-md-6" th:unless="${offer.bggStatus.name() == 'SKIPPED'}">
@@ -64,6 +68,8 @@
                                 <div><dt>Status</dt><dd th:text="${offer.bggStatus.displayName}">Status</dd></div>
                             </dl>
                             <a th:if="${offer.bggId != null}" th:href="'https://boardgamegeek.com/boardgame/' + ${offer.bggId}" target="_blank" rel="noopener">BGG öffnen ↗</a>
+                            <div th:if="${offer.bggStatus.name() != 'FOUND'}"
+                                 th:insert="~{fragments/lookup-progress :: progress(${offer.bggSearchAttempts}, ${offer.bggLookupPending})}"></div>
                         </section>
                     </div>
                 </div>

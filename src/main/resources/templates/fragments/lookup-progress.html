@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="progress(attempts, pending)" class="border-top mt-3 pt-3">
+    <p class="small fw-semibold mb-2">Suchverlauf</p>
+    <p class="small text-secondary mb-0" th:if="${#lists.isEmpty(attempts)}">Noch keine Suchversuche protokolliert.</p>
+    <ol class="list-unstyled small mb-0">
+        <li class="mb-3" th:each="attempt, iteration : ${attempts}">
+            <span class="badge text-bg-light border mb-1"
+                  th:text="'Versuch ' + ${iteration.count} + ' von ' + ${offer.maximumLookupAttempts}">Versuch 1 von 3</span>
+            <time class="d-block text-secondary" th:datetime="${attempt.attemptedAt}"
+                  th:text="${lookupTimeFormat.format(attempt.attemptedAt)}">Datum</time>
+            <span class="d-block text-break">Suchbegriff: <strong th:text="${attempt.searchTerm}">Spielname</strong></span>
+            <span class="d-block text-secondary" th:text="${attempt.status.displayName}">Nicht gefunden</span>
+        </li>
+    </ol>
+    <p class="small mb-0" th:if="${pending and offer.nextLookupAt != null}">
+        <i class="bi bi-clock me-1" aria-hidden="true"></i>Nächster Versuch:
+        <strong th:text="${lookupTimeFormat.format(offer.nextLookupAt)}">Datum</strong>
+    </p>
+    <p class="small text-secondary mb-0" th:if="${#lists.size(attempts) == offer.maximumLookupAttempts}">Alle Versuche abgeschlossen.</p>
+</div>
+</body>
+</html>

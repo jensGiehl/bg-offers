@@ -104,6 +104,7 @@ class OfferImportServiceTest {
         var first = scraped("19.99");
         var changed = scraped("17.99");
         var startedAt = Instant.parse("2026-09-24T10:00:00Z");
+        var currentTime = new AtomicReference<>(startedAt);
         var clock = mock(Clock.class);
 
         when(scraper.source()).thenReturn(OfferSource.MILAN);
@@ -126,17 +127,16 @@ class OfferImportServiceTest {
                         new BigDecimal("24.99"),
                         new BigDecimal("16.50")));
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
-        when(clock.instant()).thenReturn(
-                startedAt,
-                startedAt.plus(Duration.ofMinutes(30)),
-                startedAt.plus(Duration.ofHours(2)));
+        when(clock.instant()).thenAnswer(_ -> currentTime.get());
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
                 TestProperties.create(true),
                 new GameNameNormalizer(),
                 clock);
 
+        currentTime.set(startedAt.plus(Duration.ofMinutes(30)));
         service.importAll();
+        currentTime.set(startedAt.plus(Duration.ofHours(2)));
         service.importAll();
 
         verify(bgg, times(2)).lookup(first.name());
@@ -158,18 +158,24 @@ class OfferImportServiceTest {
         var activityLog = mock(ActivityLogService.class);
         var scraper = mock(OfferScraper.class);
         var offer = scraped("19.99");
+        var stored = new AtomicReference<Offer>();
 
         when(scraper.source()).thenReturn(OfferSource.MILAN);
         when(scraper.scrape()).thenReturn(List.of(offer));
         when(repository.findBySourceAndSourceUrl(OfferSource.MILAN, offer.sourceUrl()))
                 .thenReturn(Optional.empty());
-        when(repository.save(any(Offer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
+            var saved = invocation.getArgument(0, Offer.class);
+            stored.set(saved);
+            return saved;
+        });
+        stubPendingLookups(repository, stored);
         when(bgg.lookup(offer.name()))
                 .thenReturn(BggResult.withStatus(LookupStatus.ERROR))
                 .thenReturn(BggResult.withStatus(LookupStatus.ERROR))
                 .thenReturn(new BggResult(LookupStatus.FOUND, 42, new BigDecimal("7.8"), 120, 17));
+        when(comparison.lookup(offer.name(), null)).thenReturn(PriceComparisonResult.withStatus(LookupStatus.ERROR));
         when(comparison.lookup(offer.name(), 42))
-                .thenReturn(PriceComparisonResult.withStatus(LookupStatus.ERROR))
                 .thenReturn(new PriceComparisonResult(
                         LookupStatus.FOUND,
                         "https://compare.example/testspiel",
@@ -183,16 +189,18 @@ class OfferImportServiceTest {
                 Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
 
         service.importAll();
+        verify(notifier, never()).sendOffer(any(Offer.class));
+        service.processPendingLookups();
+        verify(notifier, never()).sendOffer(any(Offer.class));
+        service.processPendingLookups();
 
         verify(bgg, times(3)).lookup(offer.name());
-        verify(comparison, times(2)).lookup(offer.name(), 42);
+        verify(comparison, times(2)).lookup(offer.name(), null);
+        verify(comparison).lookup(offer.name(), 42);
         verify(activityLog).recordLookupRetry(any(Offer.class), eq("BoardGameGeek"), eq(2), eq(3));
         verify(activityLog).recordLookupRetry(any(Offer.class), eq("BoardGameGeek"), eq(3), eq(3));
         verify(activityLog).recordLookupRetry(any(Offer.class), eq("brettspiel-angebote.de"), eq(2), eq(3));
-        var order = org.mockito.Mockito.inOrder(bgg, comparison, notifier);
-        order.verify(bgg, times(3)).lookup(offer.name());
-        order.verify(comparison, times(2)).lookup(offer.name(), 42);
-        order.verify(notifier).sendOffer(any(Offer.class));
+        verify(notifier).sendOffer(any(Offer.class));
     }
 
     @Test
@@ -432,7 +440,10 @@ class OfferImportServiceTest {
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
 
+        stubPendingLookups(repository, stored);
         service.importAll();
+        service.processPendingLookups();
+        service.processPendingLookups();
 
         verify(notifier, times(notificationExpected ? 1 : 0)).sendOffer(any(Offer.class));
         var exceedsLimit = source != OfferSource.UNKNOWNS && bestPrice != null
@@ -459,9 +470,15 @@ class OfferImportServiceTest {
         var scraper = mock(OfferScraper.class);
         var scraped = new ScrapedOffer(source, OfferType.STANDARD, "Testspiel",
                 "https://shop.example/exhausted", null, new BigDecimal("35.00"), null, null, null);
+        var stored = new AtomicReference<Offer>();
         when(scraper.source()).thenReturn(source);
         when(scraper.scrape()).thenReturn(List.of(scraped));
-        when(repository.save(any(Offer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
+            var saved = invocation.getArgument(0, Offer.class);
+            stored.set(saved);
+            return saved;
+        });
+        stubPendingLookups(repository, stored);
         when(bgg.lookup(scraped.name())).thenReturn(new BggResult(LookupStatus.FOUND, 42, null, null, null));
         when(comparison.lookup(scraped.name(), 42)).thenReturn(PriceComparisonResult.withStatus(status));
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
@@ -470,13 +487,15 @@ class OfferImportServiceTest {
                 Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
 
         service.importAll();
+        service.processPendingLookups();
+        service.processPendingLookups();
 
-        verify(comparison, times(status == LookupStatus.ERROR ? 3 : 1)).lookup(scraped.name(), 42);
+        verify(comparison, times(3)).lookup(scraped.name(), 42);
         verify(notifier).sendOffer(any(Offer.class));
         var entries = ArgumentCaptor.forClass(ActivityLogEntry.class);
         verify(activityRepository, atLeastOnce()).save(entries.capture());
         assertThat(entries.getAllValues()).filteredOn(entry ->
-                        entry.getType() == ActivityType.OFFER_FOUND)
+                        entry.getType() == ActivityType.OFFER_SENT)
                 .singleElement().satisfies(entry -> assertThat(entry.getNotificationSent()).isTrue());
     }
 
@@ -521,5 +540,11 @@ class OfferImportServiceTest {
                 "sofort lieferbar",
                 null,
                 null);
+    }
+
+    private void stubPendingLookups(OfferRepository repository, AtomicReference<Offer> stored) {
+        when(repository.findTop50ByNextLookupAtLessThanEqualOrderByNextLookupAtAsc(any(Instant.class)))
+                .thenAnswer(invocation -> stored.get() != null && stored.get().getNextLookupAt() != null
+                        ? List.of(stored.get()) : List.of());
     }
 }

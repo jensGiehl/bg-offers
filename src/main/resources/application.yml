@@ -47,11 +47,12 @@ offers:
     user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36
     max-attempts: 3
     retry-delay: 750ms
-    lookup-retry-delay: ${LOOKUP_RETRY_DELAY:10s}
+    lookup-retry-delay: ${LOOKUP_RETRY_DELAY:3m}
     milan-concurrency: 2
   schedule:
     initial-delay: 15s
     crawl-delay: 5m
+    lookup-delay: 30s
     health-cron: "0 0 8 * * *"
     weekly-report-cron: "0 0 18 * * SUN"
   source-health:
