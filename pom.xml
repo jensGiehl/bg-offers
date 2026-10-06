@@ -18,14 +18,105 @@
     <description>Brettspielangebote sammeln, vergleichen und melden</description>
 
     <properties>
-        <java.version>25</java.version>
+        <java.version>27</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <bgg-client.version>v1.0.0-1</bgg-client.version>
-        <jsoup.version>1.21.2</jsoup.version>
+        <jsoup.version>1.23.2</jsoup.version>
         <bootstrap.version>5.3.8</bootstrap.version>
         <bootstrap-icons.version>1.13.1</bootstrap-icons.version>
         <batik.version>1.19</batik.version>
         <thymeleaf-extras.version>3.0.4.RELEASE</thymeleaf-extras.version>
+        <h2.version>2.5.252</h2.version>
+        <hibernate.version>7.4.12.Final</hibernate.version>
+        <hikaricp.version>7.1.0</hikaricp.version>
+        <flyway.version>13.9.0</flyway.version>
+        <httpcore5.version>5.4.4</httpcore5.version>
+        <jackson-bom.version>3.2.3</jackson-bom.version>
+        <jackson-2-bom.version>2.22.3</jackson-2-bom.version>
+        <logback.version>1.6.5</logback.version>
+        <log4j2.version>2.26.1</log4j2.version>
+        <slf4j.version>2.0.20</slf4j.version>
+        <snakeyaml.version>2.7</snakeyaml.version>
+        <tomcat.version>11.0.26</tomcat.version>
+        <commons-logging.version>1.4.0</commons-logging.version>
+        <byte-buddy.version>1.18.14</byte-buddy.version>
+        <json-path.version>3.0.0</json-path.version>
+        <junit-jupiter.version>6.1.3</junit-jupiter.version>
+        <mockito.version>5.24.0</mockito.version>
+        <xmlunit2.version>2.14.0</xmlunit2.version>
+        <commons-io.version>2.22.0</commons-io.version>
+        <woodstox.version>7.3.0</woodstox.version>
+        <stax2.version>4.3.1</stax2.version>
+        <istack.version>4.2.0</istack.version>
+        <hibernate-models.version>1.3.4</hibernate-models.version>
+        <ognl.version>3.4.15</ognl.version>
+        <javassist.version>3.33.0-GA</javassist.version>
+        <attoparser.version>2.0.9.RELEASE</attoparser.version>
+        <asm.version>9.10.1</asm.version>
+        <objenesis.version>3.6</objenesis.version>
+        <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
+        <maven-install-plugin.version>3.2.0</maven-install-plugin.version>
+        <maven-deploy-plugin.version>3.2.0</maven-deploy-plugin.version>
+        <versions-maven-plugin.version>2.22.0</versions-maven-plugin.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.woodstox</groupId>
+                <artifactId>woodstox-core</artifactId>
+                <version>${woodstox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.woodstox</groupId>
+                <artifactId>stax2-api</artifactId>
+                <version>${stax2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sun.istack</groupId>
+                <artifactId>istack-commons-runtime</artifactId>
+                <version>${istack.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hibernate.models</groupId>
+                <artifactId>hibernate-models</artifactId>
+                <version>${hibernate-models.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ognl</groupId>
+                <artifactId>ognl</artifactId>
+                <version>${ognl.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.javassist</groupId>
+                <artifactId>javassist</artifactId>
+                <version>${javassist.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.attoparser</groupId>
+                <artifactId>attoparser</artifactId>
+                <version>${attoparser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.objenesis</groupId>
+                <artifactId>objenesis</artifactId>
+                <version>${objenesis.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <repositories>
         <repository>

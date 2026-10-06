@@ -2,7 +2,32 @@
 
 BG Offers sammelt Brettspielangebote von Spiele-Offensive, Milan-Spiele und dem BGG Market sowie neue Themen aus dem Schnäppchenforum von unknowns.de. Shop- und Market-Angebote werden mit BoardGameGeek- und Vergleichspreisdaten angereichert; unknowns.de-Themen werden mit Titel, Link und dem Forumslogo gespeichert und gemeldet. Ein dauerhaftes Activity Log macht diese Abläufe auch in der Web-Oberfläche nachvollziehbar. Ohne Telegram-Konfiguration werden dieselben Meldungen im Anwendungslog ausgegeben.
 
-Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
+Die Anwendung verwendet Java 27, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
+
+## Abhängigkeitsstand
+
+Die Abhängigkeiten wurden am 6. Oktober 2026 auf verfügbare stabile Versionen geprüft. Spring Boot 4.1.1 bleibt der stabile Parent; dessen Versions-Properties werden für neuere Bibliotheken gezielt überschrieben. Vorabversionen werden nicht verwendet. Quellcode und Dokumentation verwenden UTF-8.
+
+| Komponente | Version |
+|---|---|
+| Java / Maven im Docker-Build | 27 / 3.10.0 |
+| Spring Boot / Spring Framework | 4.1.1 / 7.0.9 |
+| Jsoup / Apache Batik | 1.23.2 / 1.19 |
+| Bootstrap / Bootstrap Icons (WebJars) | 5.3.8 / 1.13.1 |
+| Thymeleaf / Java-Time-Erweiterung | 3.1.5.RELEASE / 3.0.4.RELEASE |
+| H2 / Hibernate ORM / HikariCP / Flyway | 2.5.252 / 7.4.12.Final / 7.1.0 / 13.9.0 |
+| Apache HttpClient / HttpCore | 5.6.4 / 5.4.4 |
+| Jackson 3 / Jackson 2 | 3.2.3 / 2.22.3 |
+| Logback / Log4j / SLF4J / SnakeYAML | 1.6.5 / 2.26.1 / 2.0.20 / 2.7 |
+| JUnit / Mockito / Byte Buddy / XMLUnit | 6.1.3 / 5.24.0 / 1.18.14 / 2.14.0 |
+| Maven Compiler / Surefire und Failsafe | 3.16.0 / 3.6.0 |
+| Maven Install und Deploy / Versions | 3.2.0 / 2.22.0 |
+
+Auch die transitiven XML-, Parser- und Hilfsbibliotheken sowie die GitHub Actions sind aktualisiert. Ihre Versionen stehen zentral in `pom.xml` beziehungsweise `.github/workflows/docker.yml`. Der BGG-Client bleibt auf `v1.0.0-1`: Der neuere Tag `v1.0.0-2` liefert derzeit keine JitPack-Artefakte, weil der dortige Build mit Java 8 und Maven 3.6.3 an den Anforderungen Java 27 und Maven 3.9 scheitert. Seine Jackson-2-, Woodstox- und StAX-Abhängigkeiten werden bereits auf die aktuellen Versionen angehoben.
+
+Die Spring-Boot-Dokumentation nennt für 4.1.1 Java 26 als obere unterstützte Version. Java 27 wird hier entsprechend der Projektvorgabe verwendet; Änderungen an diesem Abhängigkeitsstand müssen deshalb mit `mvn clean verify` unter JDK 27 und dem Container-Starttest geprüft werden.
+
+Für diesen Stand war `mvn --strict-checksums clean verify` mit JDK 27 erfolgreich: 131 Tests bestanden, ein optionaler Live-Test wurde übersprungen. Zusätzlich wurden das ausführbare JAR, die WebJar-Ressourcen, eine neue H2-Dateidatenbank und das Öffnen sowie Migrieren einer mit H2 2.4.240 angelegten Datenbank geprüft. Die Containerprüfung für beide Architekturen läuft im GitHub-Workflow.
 
 ## Funktionsumfang
 
@@ -41,7 +66,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 
 ## Voraussetzungen
 
-- JDK 25
+- JDK 27
 - Maven 3.9 oder neuer
 - Optional: Telegram-Bot und Chat-ID
 - Optional, aber für BGG-Daten erforderlich: persönlicher BGG-API-Token
@@ -166,7 +191,7 @@ Die Namen sind in Telegram direkt mit dem jeweiligen Angebot verlinkt. Der Zeitp
 
 ## Docker
 
-Das Image unterstützt `linux/amd64` und `linux/arm64`, einschließlich 64-Bit-Raspberry-Pi-Systemen. Es läuft mit Java 25 und als Benutzer `app` mit UID/GID `10001`. Der GitHub-Workflow baut beide Architekturen einschließlich der Tests und veröffentlicht sie unter `ghcr.io/jensgiehl/bg-offers:latest`. Anschließend prüft er für beide Architekturen den Containerstart mit Host-Netzwerk auf Port 8089, die Web-Oberfläche und das Anlegen der Datenbank in einem eingebundenen Ordner; externe Abrufe sind für diese Prüfung deaktiviert.
+Das Image unterstützt `linux/amd64` und `linux/arm64`, einschließlich 64-Bit-Raspberry-Pi-Systemen. Es läuft mit Java 27 und als Benutzer `app` mit UID/GID `10001`. Der Build verwendet `maven:3.10.0-eclipse-temurin-27`, die Laufzeit `eclipse-temurin:27-jre`. Der GitHub-Workflow baut beide Architekturen einschließlich der Tests und veröffentlicht sie unter `ghcr.io/jensgiehl/bg-offers:latest`. Anschließend prüft er für beide Architekturen den Containerstart mit Host-Netzwerk auf Port 8089, die Web-Oberfläche und das Anlegen der Datenbank in einem eingebundenen Ordner; externe Abrufe sind für diese Prüfung deaktiviert.
 
 ### Raspberry Pi mit funktionierendem IPv6-Zugriff
 
