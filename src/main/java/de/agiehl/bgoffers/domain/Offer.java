@@ -310,6 +310,10 @@ public class Offer {
         return notifiedAt;
     }
 
+    public boolean isNotificationCurrent() {
+        return notifiedAt != null && !notifiedAt.isBefore(lastChangedAt);
+    }
+
     public void setNotifiedAt(Instant notifiedAt) {
         this.notifiedAt = notifiedAt;
     }

@@ -61,6 +61,7 @@
                 <i th:case="'HTTP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'LOOKUP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'TELEGRAM_SENT'" class="bi bi-telegram" aria-hidden="true"></i>
+                <i th:case="'APPLICATION_STARTED'" class="bi bi-power" aria-hidden="true"></i>
                 <i th:case="*" class="bi bi-exclamation-triangle" aria-hidden="true"></i>
             </div>
 
@@ -68,6 +69,9 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <span class="activity-label" th:text="${activity.type.displayName}">Aktivität</span>
+                        <span th:if="${activity.notificationSent != null or activity.type.name() == 'OFFER_FOUND' or activity.type.name() == 'PRICE_CHANGED'}">
+                            <span th:replace="~{fragments/notification-status :: status(${activity.notificationSent})}"></span>
+                        </span>
                         <span class="source-chip" th:if="${activity.source != null}" th:text="${activity.source.displayName}">Quelle</span>
                     </div>
                     <time class="activity-time"
@@ -128,10 +132,14 @@
 
                 <div class="telegram-note"
                      th:if="${activity.type.name() == 'TELEGRAM_SENT' or activity.type.name() == 'TELEGRAM_FAILED'}">
-                    <i class="bi bi-shield-check" aria-hidden="true"></i>
-                    <p class="mb-0" th:if="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht wurde erfolgreich übermittelt. Inhalt und Ziel werden nicht gespeichert.</p>
-                    <p class="mb-0" th:unless="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht konnte nicht übermittelt werden. Inhalt und Ziel werden nicht gespeichert.</p>
+                    <i class="bi" aria-hidden="true"
+                       th:classappend="${activity.type.name() == 'TELEGRAM_SENT' ? 'bi-shield-check' : 'bi-shield-x'}"></i>
+                    <p class="mb-0" th:if="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht wurde erfolgreich übermittelt.</p>
+                    <p class="mb-0 activity-detail" th:unless="${activity.type.name() == 'TELEGRAM_SENT'}"
+                       th:text="${activity.detail != null ? activity.detail : 'Die Nachricht konnte nicht übermittelt werden.'}">Telegram-Fehler</p>
                 </div>
+                <p class="mb-0 activity-detail" th:if="${activity.type.name() == 'APPLICATION_STARTED'}"
+                   th:text="${activity.detail}">Startbericht</p>
             </div>
         </article>
     </section>

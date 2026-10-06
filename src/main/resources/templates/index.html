@@ -88,14 +88,19 @@
                 </a>
                 <div class="p-3 p-md-4 d-flex flex-column flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
-                        <span class="type-label" th:text="${offer.type.displayName}">Angebot</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="type-label" th:text="${offer.type.displayName}">Angebot</span>
+                            <span th:replace="~{fragments/notification-status :: status(${offer.notificationCurrent})}"></span>
+                        </div>
                         <strong class="price" th:if="${offer.price != null}"
                                 th:text="${#numbers.formatDecimal(offer.price, 1, 2, 'COMMA')} + ' €'">0,00 €</strong>
                     </div>
                     <h2 class="h5 fw-bold mb-2" th:text="${offer.name}">Spielname</h2>
                     <p class="availability mb-3" th:if="${offer.availability != null}" th:text="${offer.availability}">Verfügbarkeit</p>
-                    <div class="comparison mt-auto" th:if="${offer.comparisonAvailablePrice != null}">
-                        Vergleich <strong th:text="${#numbers.formatDecimal(offer.comparisonAvailablePrice, 1, 2, 'COMMA')} + ' €'">0,00 €</strong>
+                    <div class="comparison mt-auto d-flex flex-wrap gap-2"
+                         th:if="${offer.comparisonAvailablePrice != null or offer.comparisonBestPrice != null}">
+                        <span th:if="${offer.comparisonAvailablePrice != null}">Vergleich <strong th:text="${#numbers.formatDecimal(offer.comparisonAvailablePrice, 1, 2, 'COMMA')} + ' €'">0,00 €</strong></span>
+                        <span th:if="${offer.comparisonBestPrice != null}">Bestpreis <strong th:text="${#numbers.formatDecimal(offer.comparisonBestPrice, 1, 2, 'COMMA')} + ' €'">0,00 €</strong></span>
                     </div>
                     <a class="stretched-link mt-3 fw-semibold text-decoration-none" th:href="@{/angebote/{id}(id=${offer.id})}">Details ansehen →</a>
                 </div>

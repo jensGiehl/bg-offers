@@ -628,6 +628,11 @@ body {
     }
 }
 
+.activity-detail {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 @media (min-width: 992px) {
     .detail-image {
         min-height: 42rem;

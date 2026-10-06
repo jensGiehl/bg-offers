@@ -210,7 +210,7 @@ class TelegramOrConsoleNotifierTest {
 
         assertThat(notifier.sendOffer(offer)).isFalse();
 
-        verify(activityLog).recordTelegramDelivery(false);
+        verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(false), any(String.class));
         verifyNoInteractions(client);
     }
 
@@ -226,7 +226,7 @@ class TelegramOrConsoleNotifierTest {
 
         assertThat(notifier.sendOffer(offer)).isFalse();
 
-        verify(activityLog).recordTelegramDelivery(false);
+        verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(false), any(String.class));
     }
 
     @Test
@@ -239,6 +239,36 @@ class TelegramOrConsoleNotifierTest {
         assertThat(notifier.sendOffer(offer)).isTrue();
 
         verifyNoInteractions(renderer);
+    }
+
+    @Test
+    void recordsHttpFailureDetailsWithoutTelegramCredentials() throws Exception {
+        var client = telegramClient(403,
+                "{\"ok\":false,\"description\":\"Forbidden: test-token chat-id blocked\"}");
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog,
+                mock(TelegramOfferImage.class), client);
+
+        assertThat(notifier.sendOffer(offer())).isFalse();
+
+        var detail = ArgumentCaptor.forClass(String.class);
+        verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(false), detail.capture());
+        assertThat(detail.getValue()).contains("sendMessage", "HTTP 403", "Forbidden", "blocked")
+                .doesNotContain("test-token", "chat-id");
+    }
+
+    @Test
+    void recordsNetworkFailureDetails() throws Exception {
+        var client = mock(HttpClient.class);
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new IOException("Connection reset"));
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog,
+                mock(TelegramOfferImage.class), client);
+
+        assertThat(notifier.sendOffer(offer())).isFalse();
+
+        verify(activityLog).recordTelegramDelivery(false, "sendMessage: Connection reset");
     }
 
     private OfferProperties telegramProperties() {

@@ -135,6 +135,7 @@ class OfferWebIntegrationTest {
         offer.setComparisonStatus(LookupStatus.FOUND);
         offer.setComparisonAvailablePrice(new BigDecimal("24.99"));
         offer.setComparisonBestPrice(new BigDecimal("16.50"));
+        offer.setNotifiedAt(now);
         var saved = repository.saveAndFlush(offer);
         var missingOffer = Offer.create(
                 OfferSource.MILAN,
@@ -175,10 +176,18 @@ class OfferWebIntegrationTest {
                 3,
                 now.plusSeconds(45)));
         activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(true, now.plusSeconds(60)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(false,
+                "sendMessage: HTTP 403 – Forbidden: bot was blocked", now.plusSeconds(90)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.applicationStarted(
+                "Commit: 0123456\nMilan-Spiele: 3 Ergebnisse", true, now.plusSeconds(120)));
 
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Test-Gruppendeal")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Bestpreis")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("16,50 €")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"Meldung versendet\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"Meldung nicht versendet\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("Nicht gefunden"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
@@ -205,6 +214,10 @@ class OfferWebIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Versuch 2 von 3")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("HTTP 500")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Telegram-Nachricht versendet")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("HTTP 403 – Forbidden: bot was blocked")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Anwendung gestartet")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Commit: 0123456")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Milan-Spiele: 3 Ergebnisse")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "src=\"" + UNKNOWNS_LOGO_URL + "\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(

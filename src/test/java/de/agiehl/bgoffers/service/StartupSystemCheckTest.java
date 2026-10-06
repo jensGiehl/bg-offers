@@ -23,14 +23,15 @@ import static org.mockito.Mockito.when;
 class StartupSystemCheckTest {
 
     @Test
-    void reportsSuccessfulResultsWithinTheDryRunScope() {
+    void reportsAndRecordsStartupOutsideTheDryRunScope() {
         var scraper = scraper(OfferSource.UNKNOWNS);
         var notifier = mock(OfferNotifier.class);
         var priceComparison = priceComparison(true);
         var dryRunContext = new DryRunContext();
+        var activityLog = mock(ActivityLogService.class);
         when(scraper.scrape()).thenReturn(List.of(offer(OfferSource.UNKNOWNS)));
         doAnswer(invocation -> {
-            assertThat(dryRunContext.active()).isTrue();
+            assertThat(dryRunContext.active()).isFalse();
             return true;
         }).when(notifier).sendSystemCheck(true, """
                 Commit: 0123456
@@ -43,7 +44,7 @@ class StartupSystemCheckTest {
                 TestProperties.create(),
                 priceComparison,
                 dryRunContext,
-                new ScraperExecutionCoordinator())
+                new ScraperExecutionCoordinator(), activityLog, true)
                 .run(mock(ApplicationArguments.class));
 
         verify(notifier).sendSystemCheck(true, """
@@ -51,6 +52,28 @@ class StartupSystemCheckTest {
                 unknowns.de: 1 Ergebnis
                 brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""");
         assertThat(dryRunContext.active()).isFalse();
+        verify(activityLog).recordApplicationStarted("""
+                Systemcheck erfolgreich
+                Commit: 0123456
+                unknowns.de: 1 Ergebnis
+                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""", true);
+    }
+
+    @Test
+    void recordsEveryStartupEvenWhenChecksAreDisabledAndDeliveryFails() {
+        var notifier = mock(OfferNotifier.class);
+        var activityLog = mock(ActivityLogService.class);
+        var scraper = scraper(OfferSource.MILAN);
+        var priceComparison = mock(PriceComparisonService.class);
+
+        new StartupSystemCheck(List.of(scraper), notifier, TestProperties.create(), priceComparison,
+                new DryRunContext(), new ScraperExecutionCoordinator(), activityLog, false)
+                .run(mock(ApplicationArguments.class));
+
+        verify(notifier).sendSystemCheck(true, "Commit: 0123456\nSystemcheck deaktiviert");
+        verify(activityLog).recordApplicationStarted("Commit: 0123456\nSystemcheck deaktiviert", false);
+        org.mockito.Mockito.verifyNoInteractions(priceComparison);
+        verify(scraper, org.mockito.Mockito.never()).scrape();
     }
 
     @Test
@@ -70,7 +93,7 @@ class StartupSystemCheckTest {
                 TestProperties.create(),
                 priceComparison,
                 new DryRunContext(),
-                new ScraperExecutionCoordinator())
+                new ScraperExecutionCoordinator(), mock(ActivityLogService.class), true)
                 .run(mock(ApplicationArguments.class));
 
         var message = org.mockito.ArgumentCaptor.forClass(String.class);
@@ -96,7 +119,7 @@ class StartupSystemCheckTest {
                 TestProperties.create(),
                 priceComparison,
                 new DryRunContext(),
-                new ScraperExecutionCoordinator())
+                new ScraperExecutionCoordinator(), mock(ActivityLogService.class), true)
                 .run(mock(ApplicationArguments.class));
 
         verify(notifier).sendSystemCheck(false, """
@@ -116,7 +139,7 @@ class StartupSystemCheckTest {
                 TestProperties.create(),
                 priceComparison,
                 new DryRunContext(),
-                new ScraperExecutionCoordinator())
+                new ScraperExecutionCoordinator(), mock(ActivityLogService.class), true)
                 .run(mock(ApplicationArguments.class));
 
         verify(notifier).sendSystemCheck(false, """

@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -16,11 +16,6 @@ import java.util.Comparator;
 import java.util.List;
 
 @Component
-@ConditionalOnProperty(
-        prefix = "offers",
-        name = "startup-system-check-enabled",
-        havingValue = "true",
-        matchIfMissing = true)
 public class StartupSystemCheck implements ApplicationRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StartupSystemCheck.class);
@@ -32,6 +27,8 @@ public class StartupSystemCheck implements ApplicationRunner {
     private final PriceComparisonService priceComparisonService;
     private final DryRunContext dryRunContext;
     private final ScraperExecutionCoordinator executionCoordinator;
+    private final ActivityLogService activityLogService;
+    private final boolean checkEnabled;
 
     public StartupSystemCheck(
             List<OfferScraper> scrapers,
@@ -39,7 +36,9 @@ public class StartupSystemCheck implements ApplicationRunner {
             OfferProperties properties,
             PriceComparisonService priceComparisonService,
             DryRunContext dryRunContext,
-            ScraperExecutionCoordinator executionCoordinator) {
+            ScraperExecutionCoordinator executionCoordinator,
+            ActivityLogService activityLogService,
+            @Value("${offers.startup-system-check-enabled:true}") boolean checkEnabled) {
         this.scrapers = scrapers.stream()
                 .sorted(Comparator.comparingInt(scraper -> scraper.source().ordinal()))
                 .toList();
@@ -48,21 +47,37 @@ public class StartupSystemCheck implements ApplicationRunner {
         this.priceComparisonService = priceComparisonService;
         this.dryRunContext = dryRunContext;
         this.executionCoordinator = executionCoordinator;
+        this.activityLogService = activityLogService;
+        this.checkEnabled = checkEnabled;
     }
 
     @Override
     public void run(ApplicationArguments arguments) {
-        executionCoordinator.run(() -> dryRunContext.run(this::checkSources));
+        executionCoordinator.run(this::checkSources);
     }
 
     private void checkSources() {
-        var sourceResults = scrapers.stream()
-                .map(this::check)
-                .toList();
-        var results = new ArrayList<>(sourceResults);
-        results.add(checkPriceComparison());
-        var successful = !sourceResults.isEmpty() && results.stream().allMatch(CheckResult::successful);
-        notifier.sendSystemCheck(successful, statusMessage(sourceResults.isEmpty(), results));
+        var sourceResults = new ArrayList<CheckResult>();
+        var results = new ArrayList<CheckResult>();
+        if (checkEnabled) {
+            dryRunContext.run(() -> {
+                scrapers.stream().map(this::check).forEach(sourceResults::add);
+                results.addAll(sourceResults);
+                results.add(checkPriceComparison());
+            });
+        }
+        var successful = !checkEnabled
+                || (!sourceResults.isEmpty() && results.stream().allMatch(CheckResult::successful));
+        var message = statusMessage(sourceResults.isEmpty(), results);
+        var sent = notifier.sendSystemCheck(successful, message);
+        var report = checkEnabled
+                ? "Systemcheck %s\n%s".formatted(successful ? "erfolgreich" : "fehlgeschlagen", message)
+                : message;
+        activityLogService.recordApplicationStarted(report, sent);
+        if (!checkEnabled) {
+            LOGGER.info("Anwendung gestartet; Systemcheck deaktiviert");
+            return;
+        }
         var sourceLabel = sourceResults.size() == 1 ? "Quelle" : "Quellen";
         if (successful) {
             LOGGER.info("Systemcheck für {} {} und brettspiel-angebote.de war erfolgreich",
@@ -102,7 +117,9 @@ public class StartupSystemCheck implements ApplicationRunner {
     private String statusMessage(boolean noSourcesEnabled, List<CheckResult> results) {
         var lines = new ArrayList<String>();
         lines.add("Commit: " + shortCommitId());
-        if (noSourcesEnabled) {
+        if (!checkEnabled) {
+            lines.add("Systemcheck deaktiviert");
+        } else if (noSourcesEnabled) {
             lines.add("Keine Quellen aktiviert");
         }
         results.stream().map(CheckResult::description).forEach(lines::add);

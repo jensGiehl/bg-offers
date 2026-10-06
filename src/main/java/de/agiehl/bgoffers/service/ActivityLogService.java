@@ -58,6 +58,14 @@ public class ActivityLogService {
         save(ActivityLogEntry.telegramDelivery(successful, Instant.now(clock)));
     }
 
+    public void recordTelegramDelivery(boolean successful, String detail) {
+        save(ActivityLogEntry.telegramDelivery(successful, detail, Instant.now(clock)));
+    }
+
+    public void recordApplicationStarted(String report, boolean notificationSent) {
+        save(ActivityLogEntry.applicationStarted(report, notificationSent, Instant.now(clock)));
+    }
+
     private void save(ActivityLogEntry entry) {
         if (!dryRunContext.active()) {
             repository.save(entry);

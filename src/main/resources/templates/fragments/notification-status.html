@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<body>
+<span th:fragment="status(sent)" class="notification-status flex-shrink-0" role="img"
+      th:classappend="${sent == null ? 'text-secondary' : (sent ? 'text-success' : 'text-secondary')}"
+      th:title="${sent == null ? 'Versandstatus unbekannt (älterer Eintrag)' : (sent ? 'Meldung versendet' : 'Meldung nicht versendet')}"
+      th:attr="aria-label=${sent == null ? 'Versandstatus unbekannt (älterer Eintrag)' : (sent ? 'Meldung versendet' : 'Meldung nicht versendet')}">
+    <i class="bi" aria-hidden="true"
+       th:classappend="${sent == null ? 'bi-question-circle' : (sent ? 'bi-send-check-fill' : 'bi-send-x')}"></i>
+</span>
+</body>
+</html>

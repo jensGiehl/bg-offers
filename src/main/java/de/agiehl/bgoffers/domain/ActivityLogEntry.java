@@ -62,8 +62,10 @@ public class ActivityLogEntry {
     @Column(length = 32)
     private LookupStatus comparisonStatus;
 
-    @Column(length = 1000)
+    @Column(length = 10000)
     private String detail;
+
+    private Boolean notificationSent;
 
     protected ActivityLogEntry() {
     }
@@ -85,9 +87,24 @@ public class ActivityLogEntry {
     }
 
     public static ActivityLogEntry telegramDelivery(boolean successful, Instant occurredAt) {
+        return telegramDelivery(successful, null, occurredAt);
+    }
+
+    public static ActivityLogEntry telegramDelivery(boolean successful, String detail, Instant occurredAt) {
         var entry = new ActivityLogEntry();
         entry.type = successful ? ActivityType.TELEGRAM_SENT : ActivityType.TELEGRAM_FAILED;
         entry.occurredAt = occurredAt;
+        entry.detail = detail;
+        entry.notificationSent = successful;
+        return entry;
+    }
+
+    public static ActivityLogEntry applicationStarted(String report, boolean notificationSent, Instant occurredAt) {
+        var entry = new ActivityLogEntry();
+        entry.type = ActivityType.APPLICATION_STARTED;
+        entry.occurredAt = occurredAt;
+        entry.detail = report;
+        entry.notificationSent = notificationSent;
         return entry;
     }
 
@@ -134,6 +151,9 @@ public class ActivityLogEntry {
         entry.currentPrice = offer.getPrice();
         entry.bggStatus = offer.getBggStatus();
         entry.comparisonStatus = offer.getComparisonStatus();
+        if (type != ActivityType.LOOKUP_RETRY) {
+            entry.notificationSent = type == ActivityType.OFFER_SENT || offer.isNotificationCurrent();
+        }
         return entry;
     }
 
@@ -187,5 +207,9 @@ public class ActivityLogEntry {
 
     public String getDetail() {
         return detail;
+    }
+
+    public Boolean getNotificationSent() {
+        return notificationSent;
     }
 }

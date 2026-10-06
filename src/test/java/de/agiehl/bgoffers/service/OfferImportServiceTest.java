@@ -1,5 +1,8 @@
 package de.agiehl.bgoffers.service;
 
+import de.agiehl.bgoffers.TestProperties;
+import de.agiehl.bgoffers.domain.ActivityLogEntry;
+import de.agiehl.bgoffers.domain.ActivityType;
 import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
@@ -10,10 +13,12 @@ import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import de.agiehl.bgoffers.pricecomparison.PriceComparisonResult;
 import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
+import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import de.agiehl.bgoffers.scraper.ScrapedOffer;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -29,6 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -69,7 +75,7 @@ class OfferImportServiceTest {
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier,
                 activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
 
@@ -126,7 +132,7 @@ class OfferImportServiceTest {
                 startedAt.plus(Duration.ofHours(2)));
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(true),
+                TestProperties.create(true),
                 new GameNameNormalizer(),
                 clock);
 
@@ -172,7 +178,7 @@ class OfferImportServiceTest {
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
 
@@ -221,7 +227,7 @@ class OfferImportServiceTest {
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
 
@@ -265,7 +271,7 @@ class OfferImportServiceTest {
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-24T10:00:00Z"), ZoneOffset.UTC));
 
@@ -314,7 +320,7 @@ class OfferImportServiceTest {
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-25T10:00:00Z"), ZoneOffset.UTC));
 
@@ -354,7 +360,7 @@ class OfferImportServiceTest {
                         new BigDecimal("25.00")));
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-09-25T10:00:00Z"), ZoneOffset.UTC));
 
@@ -376,7 +382,7 @@ class OfferImportServiceTest {
             "MILAN, NOT_CONFIGURED, , 20.00, 30.00, false",
             "MILAN, FOUND, 22.00, 20.00, 22.00, false",
             "MILAN, FOUND, 25.00, , 30.00, true",
-            "MILAN, FOUND, 30.00, , 30.00, false",
+            "MILAN, FOUND, 30.00, , 30.00, true",
             "MILAN, NOT_CONFIGURED, 35.00, , 30.00, true",
             "BGG_MARKET, FOUND, 19.99, 20.00, 30.00, true",
             "BGG_MARKET, FOUND, 22.00, 20.00, 30.00, true",
@@ -384,7 +390,11 @@ class OfferImportServiceTest {
             "BGG_MARKET, NOT_CONFIGURED, 22.01, 20.00, 30.00, false",
             "BGG_MARKET, FOUND, 22.00, 20.00, 22.00, false",
             "BGG_MARKET, FOUND, 25.00, , 30.00, true",
-            "BGG_MARKET, NOT_CONFIGURED, 35.00, , 30.00, false"
+            "BGG_MARKET, NOT_CONFIGURED, 35.00, , 30.00, true",
+            "BGG_MARKET, FOUND, 35.00, , 30.00, true",
+            "BGG_MARKET, FOUND, , , , true",
+            "UNKNOWNS, FOUND, 35.00, 20.00, 30.00, true",
+            "UNKNOWNS, FOUND, , 20.00, 30.00, true"
     })
     void appliesBestPriceLimitInAdditionToExistingNotificationRules(
             OfferSource source,
@@ -418,14 +428,14 @@ class OfferImportServiceTest {
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier, activityLog,
-                de.agiehl.bgoffers.TestProperties.create(),
+                TestProperties.create(),
                 new GameNameNormalizer(),
                 Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
 
         service.importAll();
 
         verify(notifier, times(notificationExpected ? 1 : 0)).sendOffer(any(Offer.class));
-        var exceedsLimit = bestPrice != null
+        var exceedsLimit = source != OfferSource.UNKNOWNS && bestPrice != null
                 && (price == null || price.compareTo(bestPrice.multiply(new BigDecimal("1.10"))) > 0);
         verify(activityLog, times(exceedsLimit ? 1 : 0))
                 .recordBestPriceWithheld(any(Offer.class), any(Instant.class));
@@ -435,6 +445,54 @@ class OfferImportServiceTest {
         assertThat(stored.get().getPrice()).isEqualTo(price);
         assertThat(stored.get().getNotifiedAt() != null).isEqualTo(notificationExpected);
         assertThat(stored.get().getNotificationFingerprint() != null).isEqualTo(notificationExpected);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"MILAN, ERROR", "BGG_MARKET, ERROR", "MILAN, NOT_FOUND", "BGG_MARKET, NOT_FOUND"})
+    void sendsWithoutBestPriceAfterLookupAttemptsAreExhausted(OfferSource source, LookupStatus status) {
+        var repository = mock(OfferRepository.class);
+        var bgg = mock(BggLookupService.class);
+        var comparison = mock(PriceComparisonService.class);
+        var notifier = mock(OfferNotifier.class);
+        var activityRepository = mock(ActivityLogRepository.class);
+        var activityLog = new ActivityLogService(activityRepository, new DryRunContext(), Clock.systemUTC());
+        var scraper = mock(OfferScraper.class);
+        var scraped = new ScrapedOffer(source, OfferType.STANDARD, "Testspiel",
+                "https://shop.example/exhausted", null, new BigDecimal("35.00"), null, null, null);
+        when(scraper.source()).thenReturn(source);
+        when(scraper.scrape()).thenReturn(List.of(scraped));
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bgg.lookup(scraped.name())).thenReturn(new BggResult(LookupStatus.FOUND, 42, null, null, null));
+        when(comparison.lookup(scraped.name(), 42)).thenReturn(PriceComparisonResult.withStatus(status));
+        when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
+        var service = new OfferImportService(List.of(scraper), repository, bgg, comparison, notifier, activityLog,
+                TestProperties.create(), new GameNameNormalizer(),
+                Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
+
+        service.importAll();
+
+        verify(comparison, times(status == LookupStatus.ERROR ? 3 : 1)).lookup(scraped.name(), 42);
+        verify(notifier).sendOffer(any(Offer.class));
+        var entries = ArgumentCaptor.forClass(ActivityLogEntry.class);
+        verify(activityRepository, atLeastOnce()).save(entries.capture());
+        assertThat(entries.getAllValues()).filteredOn(entry ->
+                        entry.getType() == ActivityType.OFFER_FOUND)
+                .singleElement().satisfies(entry -> assertThat(entry.getNotificationSent()).isTrue());
+    }
+
+    @Test
+    void recordsAnUnsentPriceChangeEvenIfAnEarlierPriceWasSent() {
+        var now = Instant.parse("2026-10-06T10:00:00Z");
+        var offer = Offer.create(OfferSource.MILAN, OfferType.STANDARD, "Testspiel",
+                "https://shop.example/changed", now.minusSeconds(3600));
+        offer.setNotifiedAt(now.minusSeconds(3600));
+        var sent = ActivityLogEntry.offerFound(offer, now.minusSeconds(3600));
+        offer.setLastChangedAt(now);
+        var changed = ActivityLogEntry.priceChanged(offer, new BigDecimal("19.99"), now);
+
+        assertThat(offer.isNotificationCurrent()).isFalse();
+        assertThat(changed.getNotificationSent()).isFalse();
+        assertThat(sent.getNotificationSent()).isTrue();
     }
 
     private ScrapedOffer bggMarketOffer(String productId, String price) {

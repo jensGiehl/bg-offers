@@ -183,12 +183,12 @@ public class OfferImportService {
             enrich(offer, scraped.bggId(), now);
         }
         offer = repository.save(offer);
+        notifyWhenRelevant(offer, now);
         if (newOffer) {
             activityLogService.recordOfferFound(offer, now);
         } else {
             activityLogService.recordPriceChanged(offer, previousPrice, now);
         }
-        notifyWhenRelevant(offer, now);
     }
 
     private void enrich(Offer offer, Integer knownBggId, Instant now) {
@@ -291,14 +291,17 @@ public class OfferImportService {
     }
 
     private boolean exceedsBestPriceLimit(Offer offer) {
-        return offer.getComparisonBestPrice() != null
+        return offer.getSource() != OfferSource.UNKNOWNS
+                && offer.getComparisonBestPrice() != null
                 && (offer.getPrice() == null
                 || offer.getPrice().compareTo(
                         offer.getComparisonBestPrice().multiply(BEST_PRICE_NOTIFICATION_FACTOR)) > 0);
     }
 
     private boolean shouldNotify(Offer offer) {
-        if (offer.getType() == OfferType.SPIELESCHMIEDE || offer.getType() == OfferType.FORUM_POST) {
+        if (offer.getSource() == OfferSource.UNKNOWNS
+                || offer.getComparisonBestPrice() == null
+                || offer.getType() == OfferType.SPIELESCHMIEDE || offer.getType() == OfferType.FORUM_POST) {
             return true;
         }
         var lookupMissing = offer.getBggStatus() != LookupStatus.FOUND
