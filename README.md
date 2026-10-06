@@ -259,6 +259,8 @@ docker build \
 
 Für den lokalen Start im obigen `docker run` die letzte Zeile durch `bg-offers:local` ersetzen und `--pull=always` entfernen. Das lokale Image wird ebenfalls einschließlich Tests gebaut.
 
+Maven fragt zuerst Maven Central und anschließend JitPack ab, das für `bggClient` benötigt wird. Dadurch werden Standardabhängigkeiten wie `xml-apis-ext` aus Maven Central geladen; JitPack hatte hierfür leere Dateien mit HTTP 200 geliefert. Beide Maven-Schritte im Docker-Build verwenden `--strict-checksums`, damit Downloads mit fehlenden oder falschen Prüfsummen abgelehnt werden. Änderungen an `pom.xml` erneuern auch die Docker-Schicht mit den vorgeladenen Abhängigkeiten.
+
 ### Betrieb mit einem eigenen Docker-Netzwerk
 
 Wenn ein Docker-Netzwerk bereits einen geeigneten IPv6-Internetzugang besitzt, kann weiterhin ein klassischer Start mit Portweiterleitung verwendet werden. Das folgende Beispiel setzt diesen Zugang voraus und ist nicht die empfohlene Pi-Konfiguration:

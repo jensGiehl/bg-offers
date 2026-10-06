@@ -2,9 +2,9 @@ FROM maven:3.9-eclipse-temurin-25 AS build
 
 WORKDIR /workspace
 COPY pom.xml .
-RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
+RUN mvn --batch-mode --no-transfer-progress --strict-checksums dependency:go-offline
 COPY src src
-RUN mvn --batch-mode --no-transfer-progress clean package
+RUN mvn --batch-mode --no-transfer-progress --strict-checksums clean package
 
 FROM eclipse-temurin:25-jre
 
