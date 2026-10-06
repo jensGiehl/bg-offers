@@ -25,6 +25,11 @@ public interface OfferRepository extends JpaRepository<Offer, Long> {
 
     Page<Offer> findBySourceOrderByLastChangedAtDescIdDesc(OfferSource source, Pageable pageable);
 
+    Page<Offer> findByNameContainingIgnoreCaseOrderByLastChangedAtDescIdDesc(String title, Pageable pageable);
+
+    Page<Offer> findBySourceAndNameContainingIgnoreCaseOrderByLastChangedAtDescIdDesc(
+            OfferSource source, String title, Pageable pageable);
+
     long countBySource(OfferSource source);
 
     List<Offer> findByBggStatusOrderByNameAsc(LookupStatus status);

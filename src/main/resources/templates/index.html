@@ -46,21 +46,40 @@
 </header>
 
 <main class="container py-4 py-md-5">
+    <form class="search-panel mb-4" method="get" action="/" role="search" aria-label="Angebotstitel suchen">
+        <label class="form-label fw-semibold" for="title-search">Titel suchen</label>
+        <input type="hidden" name="source" th:if="${selectedSource != null}" th:value="${selectedSource}">
+        <div class="d-flex flex-column flex-sm-row gap-2">
+            <div class="input-group flex-grow-1">
+                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <input class="form-control" id="title-search" type="search" name="q" th:value="${searchQuery}"
+                       placeholder="Spiel oder Teil eines Titels eingeben">
+            </div>
+            <button class="btn btn-dark" type="submit">Suchen</button>
+            <a class="btn btn-outline-dark text-nowrap" th:if="${!searchQuery.isEmpty()}"
+               th:href="@{/(source=${selectedSource})}">Suche zurücksetzen</a>
+        </div>
+        <p class="text-secondary small mt-2 mb-0" th:if="${!searchQuery.isEmpty()}">
+            <strong th:text="${offers.totalElements}">0</strong> Treffer für
+            „<span th:text="${searchQuery}">Suchbegriff</span>“
+        </p>
+    </form>
+
     <nav class="filter-bar d-flex gap-2 overflow-x-auto mb-4" aria-label="Quellenfilter">
         <a class="btn rounded-pill"
            th:classappend="${selectedSource == null} ? 'btn-dark' : 'btn-outline-dark'"
-           href="/">Alle</a>
+           th:href="@{/(q=${searchQuery.isEmpty() ? null : searchQuery})}">Alle</a>
         <a class="btn rounded-pill text-nowrap"
            th:each="source : ${sources}"
            th:classappend="${selectedSource == source} ? 'btn-dark' : 'btn-outline-dark'"
-           th:href="@{/(source=${source})}"
+           th:href="@{/(source=${source},q=${searchQuery.isEmpty() ? null : searchQuery})}"
            th:text="${source.displayName}">Quelle</a>
     </nav>
 
     <div class="empty-state" th:if="${offers.empty}">
         <span>🎲</span>
-        <h2>Noch keine Angebote erfasst</h2>
-        <p>Der erste automatische Abruf startet kurz nach dem Anwendungsstart.</p>
+        <h2 th:text="${!searchQuery.isEmpty() or selectedSource != null} ? 'Keine passenden Angebote gefunden' : 'Noch keine Angebote erfasst'">Noch keine Angebote erfasst</h2>
+        <p th:text="${!searchQuery.isEmpty() or selectedSource != null} ? 'Ändere den Suchbegriff oder wähle eine andere Quelle.' : 'Der erste automatische Abruf startet kurz nach dem Anwendungsstart.'">Der erste automatische Abruf startet kurz nach dem Anwendungsstart.</p>
     </div>
 
     <div class="row g-3 g-lg-4" th:unless="${offers.empty}">
@@ -111,11 +130,11 @@
     <nav class="d-flex justify-content-between align-items-center mt-5" th:if="${offers.totalPages > 1}" aria-label="Seitennavigation">
         <a class="btn btn-outline-dark"
            th:classappend="${offers.first} ? 'disabled'"
-           th:href="@{/(page=${offers.number - 1},source=${selectedSource})}">← Zurück</a>
+           th:href="@{/(page=${offers.number - 1},source=${selectedSource},q=${searchQuery.isEmpty() ? null : searchQuery})}">← Zurück</a>
         <span class="text-secondary" th:text="'Seite ' + ${offers.number + 1} + ' von ' + ${offers.totalPages}">Seite</span>
         <a class="btn btn-outline-dark"
            th:classappend="${offers.last} ? 'disabled'"
-           th:href="@{/(page=${offers.number + 1},source=${selectedSource})}">Weiter →</a>
+           th:href="@{/(page=${offers.number + 1},source=${selectedSource},q=${searchQuery.isEmpty() ? null : searchQuery})}">Weiter →</a>
     </nav>
 </main>
 

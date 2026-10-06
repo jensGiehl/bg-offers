@@ -11,7 +11,9 @@ import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.repository.OfferRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -94,12 +96,13 @@ public class OfferController {
     public String index(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(required = false) OfferSource source,
+            @RequestParam(defaultValue = "") String q,
             Model model) {
         var pageRequest = PageRequest.of(Math.max(page, 0), 24);
-        var offers = source == null
-                ? repository.findAllByOrderByLastChangedAtDescIdDesc(pageRequest)
-                : repository.findBySourceOrderByLastChangedAtDescIdDesc(source, pageRequest);
+        var searchQuery = q.strip();
+        var offers = findOffers(source, searchQuery, pageRequest);
         model.addAttribute("offers", offers);
+        model.addAttribute("searchQuery", searchQuery);
         model.addAttribute("selectedSource", source);
         model.addAttribute("sources", OfferSource.values());
         model.addAttribute("total", repository.count());
@@ -131,6 +134,18 @@ public class OfferController {
                                 ActivityType.OFFER_SENT, ActivityType.BEST_PRICE_WITHHELD,
                                 ActivityType.NOTIFICATION_DEFERRED, ActivityType.NOTIFICATION_WITHHELD)));
         return "offer";
+    }
+
+    private Page<Offer> findOffers(OfferSource source, String searchQuery, Pageable pageable) {
+        if (searchQuery.isEmpty()) {
+            return source == null
+                    ? repository.findAllByOrderByLastChangedAtDescIdDesc(pageable)
+                    : repository.findBySourceOrderByLastChangedAtDescIdDesc(source, pageable);
+        }
+        return source == null
+                ? repository.findByNameContainingIgnoreCaseOrderByLastChangedAtDescIdDesc(searchQuery, pageable)
+                : repository.findBySourceAndNameContainingIgnoreCaseOrderByLastChangedAtDescIdDesc(
+                        source, searchQuery, pageable);
     }
 
     private List<String> missingTerms(List<Offer> offers, UnaryOperator<String> searchTermNormalizer) {

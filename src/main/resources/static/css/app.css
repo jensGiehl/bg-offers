@@ -71,6 +71,23 @@ body {
     scrollbar-width: none;
 }
 
+.search-panel {
+    background: var(--surface);
+    border: 1px solid rgba(23, 32, 29, .08);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+
+.search-panel .input-group {
+    min-width: 0;
+    width: auto;
+}
+
+.search-panel .input-group-text {
+    background: #f0eee6;
+    color: var(--green);
+}
+
 .view-switch {
     background: rgba(255, 255, 255, .7);
     border: 1px solid rgba(23, 32, 29, .08);
