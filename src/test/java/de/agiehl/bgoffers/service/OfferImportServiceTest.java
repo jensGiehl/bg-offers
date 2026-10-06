@@ -14,6 +14,8 @@ import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import de.agiehl.bgoffers.scraper.ScrapedOffer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -62,7 +64,7 @@ class OfferImportServiceTest {
         when(bgg.lookup(first.name())).thenReturn(
                 new BggResult(LookupStatus.FOUND, 42, new BigDecimal("7.8"), 120, 17));
         when(comparison.lookup(first.name(), 42)).thenReturn(
-                new PriceComparisonResult(LookupStatus.FOUND, "https://compare.example/testspiel", new BigDecimal("24.99"), new BigDecimal("16.50")));
+                new PriceComparisonResult(LookupStatus.FOUND, "https://compare.example/testspiel", new BigDecimal("24.99"), new BigDecimal("18.50")));
         when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
         var service = new OfferImportService(
                 List.of(scraper), repository, bgg, comparison, notifier,
@@ -358,6 +360,74 @@ class OfferImportServiceTest {
         service.importAll();
 
         verify(notifier, never()).sendOffer(any(Offer.class));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "MILAN, FOUND, 19.99, 20.00, 30.00, true",
+            "MILAN, FOUND, 20.00, 20.00, 30.00, true",
+            "MILAN, FOUND, 21.99, 20.00, 30.00, true",
+            "MILAN, FOUND, 22.00, 20.00, 30.00, true",
+            "MILAN, FOUND, 22.01, 20.00, 30.00, false",
+            "MILAN, FOUND, 22.00, 19.99, 30.00, false",
+            "MILAN, NOT_CONFIGURED, 22.00, 20.00, 30.00, true",
+            "MILAN, NOT_CONFIGURED, 22.01, 20.00, 30.00, false",
+            "MILAN, NOT_CONFIGURED, , 20.00, 30.00, false",
+            "MILAN, FOUND, 22.00, 20.00, 22.00, false",
+            "MILAN, FOUND, 25.00, , 30.00, true",
+            "MILAN, FOUND, 30.00, , 30.00, false",
+            "MILAN, NOT_CONFIGURED, 35.00, , 30.00, true",
+            "BGG_MARKET, FOUND, 19.99, 20.00, 30.00, true",
+            "BGG_MARKET, FOUND, 22.00, 20.00, 30.00, true",
+            "BGG_MARKET, FOUND, 22.01, 20.00, 30.00, false",
+            "BGG_MARKET, NOT_CONFIGURED, 22.01, 20.00, 30.00, false",
+            "BGG_MARKET, FOUND, 22.00, 20.00, 22.00, false",
+            "BGG_MARKET, FOUND, 25.00, , 30.00, true",
+            "BGG_MARKET, NOT_CONFIGURED, 35.00, , 30.00, false"
+    })
+    void appliesBestPriceLimitInAdditionToExistingNotificationRules(
+            OfferSource source,
+            LookupStatus bggStatus,
+            BigDecimal price,
+            BigDecimal bestPrice,
+            BigDecimal availablePrice,
+            boolean notificationExpected) {
+        var repository = mock(OfferRepository.class);
+        var bgg = mock(BggLookupService.class);
+        var comparison = mock(PriceComparisonService.class);
+        var notifier = mock(OfferNotifier.class);
+        var activityLog = mock(ActivityLogService.class);
+        var scraper = mock(OfferScraper.class);
+        var scraped = new ScrapedOffer(
+                source, OfferType.STANDARD, "Testspiel", "https://shop.example/testspiel",
+                null, price, null, null, null);
+        var stored = new AtomicReference<Offer>();
+
+        when(scraper.source()).thenReturn(source);
+        when(scraper.scrape()).thenReturn(List.of(scraped));
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> {
+            var saved = invocation.getArgument(0, Offer.class);
+            stored.set(saved);
+            return saved;
+        });
+        when(bgg.lookup(scraped.name())).thenReturn(new BggResult(bggStatus, 42, null, null, null));
+        when(comparison.lookup(scraped.name(), 42)).thenReturn(
+                new PriceComparisonResult(
+                        LookupStatus.FOUND, "https://compare.example/testspiel", availablePrice, bestPrice));
+        when(notifier.sendOffer(any(Offer.class))).thenReturn(true);
+        var service = new OfferImportService(
+                List.of(scraper), repository, bgg, comparison, notifier, activityLog,
+                de.agiehl.bgoffers.TestProperties.create(),
+                new GameNameNormalizer(),
+                Clock.fixed(Instant.parse("2026-10-06T10:00:00Z"), ZoneOffset.UTC));
+
+        service.importAll();
+
+        verify(notifier, times(notificationExpected ? 1 : 0)).sendOffer(any(Offer.class));
+        verify(activityLog).recordOfferFound(any(Offer.class), any(Instant.class));
+        assertThat(stored.get().getPrice()).isEqualTo(price);
+        assertThat(stored.get().getNotifiedAt() != null).isEqualTo(notificationExpected);
+        assertThat(stored.get().getNotificationFingerprint() != null).isEqualTo(notificationExpected);
     }
 
     private ScrapedOffer bggMarketOffer(String productId, String price) {

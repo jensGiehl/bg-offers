@@ -37,6 +37,7 @@ public class OfferImportService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OfferImportService.class);
     private static final Duration INITIAL_IMPORT_NOTIFICATION_PAUSE = Duration.ofHours(2);
+    private static final BigDecimal BEST_PRICE_NOTIFICATION_FACTOR = new BigDecimal("1.10");
 
     private final List<OfferScraper> scrapers;
     private final OfferRepository repository;
@@ -282,6 +283,12 @@ public class OfferImportService {
     }
 
     private boolean shouldNotify(Offer offer) {
+        if (offer.getComparisonBestPrice() != null
+                && (offer.getPrice() == null
+                || offer.getPrice().compareTo(
+                        offer.getComparisonBestPrice().multiply(BEST_PRICE_NOTIFICATION_FACTOR)) > 0)) {
+            return false;
+        }
         if (offer.getType() == OfferType.SPIELESCHMIEDE || offer.getType() == OfferType.FORUM_POST) {
             return true;
         }

@@ -26,6 +26,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - Protokolliert erfolgreiche und fehlgeschlagene Telegram-Sendeversuche ohne Nachrichteninhalt, Bot-Token oder Chat-ID.
 - Lässt nicht verfügbare Werte wie Verfügbarkeit, Vergleichspreis, Bestpreis oder BGG-Daten in Telegram-Nachrichten vollständig weg.
 - Meldet neue oder preislich veränderte Angebote, wenn sie günstiger als ein aktuell verfügbares Vergleichsangebot sind oder eine der Zusatzquellen keinen Treffer liefert.
+- Ist ein Bestpreis verfügbar, werden Angebote zusätzlich nur bei einem aktuellen Preis von höchstens 110 % des Bestpreises gemeldet. Bei 20 € Bestpreis sind somit bis einschließlich 22 € erlaubt; ein höherer oder fehlender Angebotspreis verhindert die Meldung auch bei fehlenden BGG-Daten. Ohne Bestpreis gelten die bisherigen Versandregeln.
 - Verhindert mit einem Fingerabdruck aus Quelle, URL und Preis doppelte Meldungen.
 - Aktualisiert alle Quellen alle fünf Minuten.
 - Ruft beim Anwendungsstart jede aktivierte Quelle und die „Scythe“-Preissuche auf brettspiel-angebote.de testweise vollständig ab, ohne Ergebnisse zu speichern, und meldet Trefferzahlen, Fehler sowie die kurze Commit-ID per Telegram oder im Anwendungslog.
