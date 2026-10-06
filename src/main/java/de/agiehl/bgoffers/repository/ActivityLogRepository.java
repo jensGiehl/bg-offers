@@ -6,9 +6,16 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+
 public interface ActivityLogRepository extends JpaRepository<ActivityLogEntry, Long> {
 
     Page<ActivityLogEntry> findAllByOrderByOccurredAtDesc(Pageable pageable);
 
     long countByType(ActivityType type);
+
+    List<ActivityLogEntry> findByTypeInAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAscIdAsc(
+            Collection<ActivityType> types, Instant from, Instant until);
 }

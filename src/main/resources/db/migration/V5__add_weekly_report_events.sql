@@ -1,0 +1,4 @@
+ALTER TABLE activity_log ADD COLUMN source_url VARCHAR(1500);
+ALTER TABLE activity_log ALTER COLUMN type SET DATA TYPE ENUM('BEST_PRICE_WITHHELD', 'HTTP_RETRY', 'LOOKUP_RETRY', 'OFFER_FOUND', 'OFFER_SENT', 'PRICE_CHANGED', 'TELEGRAM_FAILED', 'TELEGRAM_SENT');
+
+CREATE INDEX idx_activity_type_occurred_at ON activity_log(type, occurred_at);

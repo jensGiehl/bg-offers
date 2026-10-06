@@ -5,6 +5,7 @@ import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
+import de.agiehl.bgoffers.domain.WeeklyReport;
 import de.agiehl.bgoffers.service.ActivityLogService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -18,6 +19,7 @@ import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +32,38 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class TelegramOrConsoleNotifierTest {
+
+    @Test
+    void sendsWeeklyReportAsHtmlWithLinkedNamesAndDisabledPreviews() throws Exception {
+        var client = telegramClient(200, "{\"ok\":true}");
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog,
+                mock(TelegramOfferImage.class), client);
+        var report = new WeeklyReport(Instant.parse("2026-10-04T16:00:00Z"),
+                Instant.parse("2026-10-11T16:00:00Z"), 2, 1,
+                List.of(new WeeklyReport.WithheldOffer("Testspiel", "https://shop.example/offer")));
+
+        assertThat(notifier.sendWeeklyReport(report)).isTrue();
+
+        var request = sentRequest(client);
+        assertThat(request.uri().getPath()).endsWith("/sendMessage");
+        assertThat(java.net.URLDecoder.decode(new String(requestBody(request), StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8)).contains("parse_mode=HTML",
+                "link_preview_options={\"is_disabled\":true}",
+                "<a href=\"https://shop.example/offer\">Testspiel</a>");
+        verify(activityLog).recordTelegramDelivery(true);
+    }
+
+    @Test
+    void reportsWeeklyDeliveryFailure() throws Exception {
+        var client = telegramClient(400, "{\"ok\":false}");
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class),
+                mock(TelegramOfferImage.class), client);
+        var report = new WeeklyReport(Instant.parse("2026-10-04T16:00:00Z"),
+                Instant.parse("2026-10-11T16:00:00Z"), 0, 0, List.of());
+
+        assertThat(notifier.sendWeeklyReport(report)).isFalse();
+    }
 
     @Test
     void omitsUnavailableEnrichmentAndAvailabilityFields() {

@@ -36,6 +36,14 @@ public class ActivityLogService {
         save(ActivityLogEntry.priceChanged(offer, previousPrice, occurredAt));
     }
 
+    public void recordOfferSent(Offer offer, Instant occurredAt) {
+        save(ActivityLogEntry.offerSent(offer, occurredAt));
+    }
+
+    public void recordBestPriceWithheld(Offer offer, Instant occurredAt) {
+        save(ActivityLogEntry.bestPriceWithheld(offer, occurredAt));
+    }
+
     public void recordLookupRetry(Offer offer, String target, int nextAttempt, int maximumAttempts) {
         save(ActivityLogEntry.lookupRetry(
                 offer, target, nextAttempt, maximumAttempts, Instant.now(clock)));

@@ -29,6 +29,7 @@ Die Anwendung verwendet Java 25, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thyme
 - Ist ein Bestpreis verfügbar, werden Angebote zusätzlich nur bei einem aktuellen Preis von höchstens 110 % des Bestpreises gemeldet. Bei 20 € Bestpreis sind somit bis einschließlich 22 € erlaubt; ein höherer oder fehlender Angebotspreis verhindert die Meldung auch bei fehlenden BGG-Daten. Ohne Bestpreis gelten die bisherigen Versandregeln.
 - Verhindert mit einem Fingerabdruck aus Quelle, URL und Preis doppelte Meldungen.
 - Aktualisiert alle Quellen alle fünf Minuten.
+- Sendet sonntags um 18:00 Uhr (Europe/Berlin) einen kompakten Wochenreport mit neuen Angeboten/Beiträgen, davon versendeten und wegen der Bestpreisgrenze zurückgehaltenen Angeboten sowie deren verlinkten Namen.
 - Ruft beim Anwendungsstart jede aktivierte Quelle und die „Scythe“-Preissuche auf brettspiel-angebote.de testweise vollständig ab, ohne Ergebnisse zu speichern, und meldet Trefferzahlen, Fehler sowie die kurze Commit-ID per Telegram oder im Anwendungslog.
 - Sortiert die Angebotsübersicht absteigend nach der letzten inhaltlichen Aktualisierung.
 - Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
@@ -138,6 +139,31 @@ Direkt beim Start führt die Anwendung einen rein lesenden Systemcheck aus. Daf�
 
 Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Sobald ein betroffener Test wieder erfolgreich ist, folgt genau eine Telegram-Entwarnung. Bleibt der Test erfolgreich, werden keine weiteren Entwarnungen gesendet. Dieser Zustand wird dauerhaft in der Datenbank gespeichert und überlebt Anwendungsneustarts. Schlägt die Zustellung der Entwarnung fehl, wird sie beim nächsten erfolgreichen Lauf erneut versucht. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
 
+## Wochenreport
+
+Jeden Sonntag um 18:00 Uhr **Europe/Berlin** sendet die Anwendung den Report über den konfigurierten Telegram-Bot. Ohne Telegram-Konfiguration erscheint er im Anwendungslog. Der Zeitraum reicht vom vorherigen Sonntag um 18:00 Uhr einschließlich bis zum aktuellen Sonntag um 18:00 Uhr ausschließlich; Sommer- und Winterzeit werden berücksichtigt. Die Anwendung muss zum Versandzeitpunkt laufen.
+
+Gezählt werden unterschiedliche, in diesem Zeitraum erstmals gespeicherte Angebote und Beiträge. Preisänderungen bereits bekannter Angebote, wiederholte Abrufe, Systemchecks, Warnungen und der Report selbst erhöhen die Zahlen nicht. „Versendet“ zählt nur erfolgreiche Angebotsmeldungen dieser neuen Einträge innerhalb des Zeitraums; ohne Telegram zählt die erfolgreiche Log-Ausgabe. Ein später in derselben Woche versendetes Angebot erscheint nur unter „Versendet“, auch wenn es zuvor zurückgehalten wurde.
+
+„Zurückgehalten“ bezeichnet die bestehende Bestpreisgrenze: Angebotspreis über **110 % des historischen Bestpreises** oder fehlender Angebotspreis bei bekanntem Bestpreis. Ein fehlender Vergleichsbestpreis allein führt weiterhin nicht zur Zurückhaltung. Andere Gründe, etwa die Pause beim Initialimport, weitere Versandregeln oder Zustellfehler, werden bei Bedarf als „Sonstige nicht versendet“ ausgewiesen.
+
+Die alphabetische Liste enthält pro zurückgehaltenem Angebot nur einen Aufzählungspunkt mit verlinktem Namen, ohne Preise, Bilder oder Linkvorschau. Lange Namen werden auf 120 Zeichen gekürzt. Umfangreiche Listen werden auf mehrere Telegram-Nachrichten verteilt, ohne Angebote wegzulassen. Auch bei null neuen Einträgen wird ein Report gesendet. Die Versand- und Zurückhaltungsereignisse werden ab dieser Version dauerhaft im Activity Log gespeichert; vor dem Update liegende Entscheidungen lassen sich daraus nicht nachträglich rekonstruieren.
+
+Beispiel:
+
+```text
+Wochenreport
+04.10.2026 18:00 – 11.10.2026 18:00 (Berlin)
+Neu: 12 · Versendet: 9 · Zurückgehalten: 3
+
+Bestpreisgrenze (+10 %) nicht erreicht:
+• Angebot A
+• Angebot B
+• Angebot C
+```
+
+Die Namen sind in Telegram direkt mit dem jeweiligen Angebot verlinkt. Der Zeitplan steht in `offers.schedule.weekly-report-cron` (`0 0 18 * * SUN`). Schlägt ein Teil des Versands fehl, wird das im Anwendungslog gemeldet; der Report wird nicht automatisch nachgeholt.
+
 ## Docker
 
 Das Image unterstützt `linux/amd64` und `linux/arm64`, einschließlich 64-Bit-Raspberry-Pi-Systemen. Es läuft mit Java 25 und als Benutzer `app` mit UID/GID `10001`. Der GitHub-Workflow baut beide Architekturen einschließlich der Tests und veröffentlicht sie unter `ghcr.io/jensgiehl/bg-offers:latest`. Anschließend prüft er für beide Architekturen den Containerstart mit Host-Netzwerk auf Port 8089, die Web-Oberfläche und das Anlegen der Datenbank in einem eingebundenen Ordner; externe Abrufe sind für diese Prüfung deaktiviert.
@@ -161,6 +187,7 @@ if [ ! -f .env ]; then cp .env.example .env; fi
 chmod 600 .env
 mkdir -p data
 sudo chown -R 10001:10001 data
+sudo chmod -R u+rwX data
 ```
 
 In `.env` bei Bedarf `BGG_API_TOKEN`, `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` eintragen. unknowns.de bleibt in der Vorlage deaktiviert; zum Aktivieren `UNKNOWNS_ENABLED=true` sowie Benutzername und Passwort setzen. `.env` wird von Git und vom Docker-Build ausgeschlossen. Der Container bindet `./data` unter `/app/data` ein, sodass die H2-Datenbank beim Ersetzen des Containers erhalten bleibt. Liegen die bisherigen Daten in einem anderen Verzeichnis, muss der Bind-Mount entsprechend angepasst werden. Eine vorhandene Java-Instanz vor dem Containerstart beenden, damit die Datenbank nur von einem Prozess geöffnet wird.
@@ -195,6 +222,32 @@ docker run -d \
 ```
 
 Bei Updates `docker compose pull` und anschließend `docker compose up -d` ausführen. Nach einem Host-Neustart läuft der Container automatisch wieder an, sofern der Docker-Dienst beim Systemstart aktiviert ist. Für diesen Zugriffspfad wird Docker Engine auf Linux mit normalem Host-Netzwerk vorausgesetzt. Docker Desktop und Rootless-Docker verwenden andere Netzwerktechnik; dort muss der tatsächliche IPv6-Ausgang separat geprüft werden.
+
+### Zugriffsfehler auf `/app/data` beheben
+
+Bei `java.nio.file.AccessDeniedException: /app/data` kann H2 seine Datenbankdateien nicht anlegen oder öffnen. Flyway meldet den Fehler beim Verbindungsaufbau. Das Image läuft als Benutzer `app` mit UID/GID `10001`; das eingebundene Host-Verzeichnis und vorhandene Datenbankdateien müssen für diesen Benutzer lesbar und schreibbar sein. Verzeichnisse benötigen außerdem das Ausführungsrecht. Das `chown` im Dockerfile setzt nur die Rechte im Image. Ein [Bind-Mount](https://docs.docker.com/engine/storage/bind-mounts/#bind-mounting-over-existing-data) überdeckt dieses Verzeichnis mit dem Host-Verzeichnis und dessen Rechten.
+
+Für die mitgelieferte Compose-Konfiguration auf dem Linux-Host im Projektverzeichnis ausführen:
+
+```bash
+docker compose stop bg-offers
+mkdir -p data
+sudo chown -R 10001:10001 data
+sudo chmod -R u+rwX data
+docker compose run --rm --no-deps --entrypoint sh bg-offers -c 'set -eu; probe=$(mktemp /app/data/.write-check.XXXXXX); rm "$probe"; if [ -e /app/data/bg-offers.mv.db ]; then test -r /app/data/bg-offers.mv.db; test -w /app/data/bg-offers.mv.db; fi'
+docker compose up -d bg-offers
+docker compose logs --tail=100 bg-offers
+```
+
+Der Schreibtest läuft als derselbe Benutzer wie die Anwendung und muss mit Exit-Code `0` enden, bevor die Anwendung wieder gestartet wird. Die vorhandene Datenbank bleibt erhalten; geändert werden Eigentümer und Zugriffsrechte im Datenverzeichnis.
+
+Bei einem Start mit `docker run` zuerst mit `docker stop bg-offers` stoppen, die gleichen Rechte auf dem tatsächlich eingebundenen Host-Verzeichnis setzen und anschließend mit `docker start bg-offers` starten. Den verwendeten Mount und seinen Schreibmodus zeigt:
+
+```bash
+docker inspect bg-offers --format '{{range .Mounts}}{{println .Source "->" .Destination "writable=" .RW}}{{end}}'
+```
+
+Für `/app/data` muss `writable=true` erscheinen. Bei einem anderen Mount-Pfad die obigen Rechtebefehle auf dessen `Source` anwenden. Ein schreibgeschützter Mount muss in der Startkonfiguration korrigiert und der Container neu erstellt werden. `DB_PATH` muss weiterhin einen Datenbank-Dateipfad ohne Dateiendung enthalten, beispielsweise `/app/data/bg-offers`, und darf nicht nur `/app/data` sein.
 
 ### Image lokal bauen
 

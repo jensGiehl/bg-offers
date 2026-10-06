@@ -56,6 +56,8 @@
             <div class="activity-marker" th:switch="${activity.type.name()}">
                 <i th:case="'OFFER_FOUND'" class="bi bi-stars" aria-hidden="true"></i>
                 <i th:case="'PRICE_CHANGED'" class="bi bi-graph-down-arrow" aria-hidden="true"></i>
+                <i th:case="'OFFER_SENT'" class="bi bi-send-check" aria-hidden="true"></i>
+                <i th:case="'BEST_PRICE_WITHHELD'" class="bi bi-pause-circle" aria-hidden="true"></i>
                 <i th:case="'HTTP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'LOOKUP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'TELEGRAM_SENT'" class="bi bi-telegram" aria-hidden="true"></i>

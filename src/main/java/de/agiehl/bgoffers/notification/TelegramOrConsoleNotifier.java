@@ -4,6 +4,7 @@ import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
+import de.agiehl.bgoffers.domain.WeeklyReport;
 import de.agiehl.bgoffers.service.ActivityLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,24 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 "text", message,
                 "parse_mode", "HTML",
                 "disable_web_page_preview", "true"));
+    }
+
+    @Override
+    public boolean sendWeeklyReport(WeeklyReport report) {
+        if (!properties.telegram().configured()) {
+            LOGGER.info("WOCHENREPORT\n{}", WeeklyReportMessage.plainText(report));
+            return true;
+        }
+        for (var message : WeeklyReportMessage.html(report)) {
+            if (!send("sendMessage", fields(
+                    "chat_id", properties.telegram().chatId(),
+                    "text", message,
+                    "parse_mode", "HTML",
+                    "link_preview_options", "{\"is_disabled\":true}"))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

@@ -268,7 +268,14 @@ public class OfferImportService {
     }
 
     private void notifyWhenRelevant(Offer offer, Instant now) {
-        if (now.isBefore(initialImportEndsAt) || !shouldNotify(offer)) {
+        if (now.isBefore(initialImportEndsAt)) {
+            return;
+        }
+        if (exceedsBestPriceLimit(offer)) {
+            activityLogService.recordBestPriceWithheld(offer, now);
+            return;
+        }
+        if (!shouldNotify(offer)) {
             return;
         }
         var fingerprint = fingerprint(offer);
@@ -279,16 +286,18 @@ public class OfferImportService {
             offer.setNotificationFingerprint(fingerprint);
             offer.setNotifiedAt(now);
             repository.save(offer);
+            activityLogService.recordOfferSent(offer, now);
         }
     }
 
-    private boolean shouldNotify(Offer offer) {
-        if (offer.getComparisonBestPrice() != null
+    private boolean exceedsBestPriceLimit(Offer offer) {
+        return offer.getComparisonBestPrice() != null
                 && (offer.getPrice() == null
                 || offer.getPrice().compareTo(
-                        offer.getComparisonBestPrice().multiply(BEST_PRICE_NOTIFICATION_FACTOR)) > 0)) {
-            return false;
-        }
+                        offer.getComparisonBestPrice().multiply(BEST_PRICE_NOTIFICATION_FACTOR)) > 0);
+    }
+
+    private boolean shouldNotify(Offer offer) {
         if (offer.getType() == OfferType.SPIELESCHMIEDE || offer.getType() == OfferType.FORUM_POST) {
             return true;
         }

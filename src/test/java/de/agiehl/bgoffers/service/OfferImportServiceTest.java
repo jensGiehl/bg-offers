@@ -81,6 +81,7 @@ class OfferImportServiceTest {
         verify(comparison, times(2)).lookup(first.name(), 42);
         verify(notifier, times(2)).sendOffer(any(Offer.class));
         verify(activityLog, times(1)).recordOfferFound(any(Offer.class), any(Instant.class));
+        verify(activityLog, times(2)).recordOfferSent(any(Offer.class), any(Instant.class));
         verify(activityLog, times(1)).recordPriceChanged(
                 any(Offer.class), eq(new BigDecimal("19.99")), any(Instant.class));
     }
@@ -424,6 +425,12 @@ class OfferImportServiceTest {
         service.importAll();
 
         verify(notifier, times(notificationExpected ? 1 : 0)).sendOffer(any(Offer.class));
+        var exceedsLimit = bestPrice != null
+                && (price == null || price.compareTo(bestPrice.multiply(new BigDecimal("1.10"))) > 0);
+        verify(activityLog, times(exceedsLimit ? 1 : 0))
+                .recordBestPriceWithheld(any(Offer.class), any(Instant.class));
+        verify(activityLog, times(notificationExpected ? 1 : 0))
+                .recordOfferSent(any(Offer.class), any(Instant.class));
         verify(activityLog).recordOfferFound(any(Offer.class), any(Instant.class));
         assertThat(stored.get().getPrice()).isEqualTo(price);
         assertThat(stored.get().getNotifiedAt() != null).isEqualTo(notificationExpected);

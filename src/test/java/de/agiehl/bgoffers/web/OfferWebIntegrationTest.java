@@ -7,6 +7,7 @@ import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.repository.ActivityLogRepository;
+import de.agiehl.bgoffers.service.WeeklyReportService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,6 +41,45 @@ class OfferWebIntegrationTest {
 
     @Autowired
     private ActivityLogRepository activityLogRepository;
+
+    @Autowired
+    private WeeklyReportService weeklyReportService;
+
+    @Test
+    void persistsWeeklyDecisionsAndHonorsInclusiveStartAndExclusiveEnd() throws Exception {
+        var from = Instant.parse("2027-01-03T17:00:00Z");
+        var until = Instant.parse("2027-01-10T17:00:00Z");
+        var withheld = repository.saveAndFlush(Offer.create(OfferSource.MILAN, OfferType.STANDARD,
+                "Report-Test zurückgehalten", "https://shop.example/report-withheld", from));
+        var sent = repository.saveAndFlush(Offer.create(OfferSource.UNKNOWNS, OfferType.FORUM_POST,
+                "Report-Test versendet", "https://shop.example/report-sent", from));
+        var excluded = repository.saveAndFlush(Offer.create(OfferSource.MILAN, OfferType.STANDARD,
+                "Nächste Woche", "https://shop.example/report-next", until));
+        var older = repository.saveAndFlush(Offer.create(OfferSource.MILAN, OfferType.STANDARD,
+                "Letzte Woche", "https://shop.example/report-previous", from.minusSeconds(1)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(withheld, from));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.bestPriceWithheld(withheld, from.plusSeconds(1)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.bestPriceWithheld(withheld, from.plusSeconds(2)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(sent, from));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.bestPriceWithheld(sent, from.plusSeconds(3)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerSent(sent, until.minusSeconds(1)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(excluded, until));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.bestPriceWithheld(excluded, until));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(older, from.minusSeconds(1)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerSent(older, from.plusSeconds(1)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(true, from.plusSeconds(1)));
+
+        var report = weeklyReportService.createReport(from, until);
+
+        assertThat(report.found()).isEqualTo(2);
+        assertThat(report.sent()).isEqualTo(1);
+        assertThat(report.withheld()).containsExactly(new de.agiehl.bgoffers.domain.WeeklyReport.WithheldOffer(
+                withheld.getName(), withheld.getSourceUrl()));
+        mockMvc.perform(get("/aktivitaeten"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Bestpreisgrenze nicht erreicht")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Angebot versendet")));
+    }
 
     @Test
     void sortsOverviewByLastChangeDescending() throws Exception {

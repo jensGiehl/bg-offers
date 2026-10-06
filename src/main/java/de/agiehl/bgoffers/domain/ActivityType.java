@@ -3,6 +3,8 @@ package de.agiehl.bgoffers.domain;
 public enum ActivityType {
     OFFER_FOUND("Neues Angebot"),
     PRICE_CHANGED("Preis geändert"),
+    OFFER_SENT("Angebot versendet"),
+    BEST_PRICE_WITHHELD("Bestpreisgrenze nicht erreicht"),
     HTTP_RETRY("HTTP-Abruf wird wiederholt"),
     LOOKUP_RETRY("Recherche wird wiederholt"),
     TELEGRAM_SENT("Telegram-Nachricht versendet"),

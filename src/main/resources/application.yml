@@ -3,6 +3,10 @@ spring:
     name: bg-offers
   main:
     banner-mode: off
+  task:
+    scheduling:
+      pool:
+        size: 3
   datasource:
     url: jdbc:h2:file:${DB_PATH:./data/bg-offers}
     username: ${DB_USER:sa}
@@ -49,6 +53,7 @@ offers:
     initial-delay: 15s
     crawl-delay: 5m
     health-cron: "0 0 8 * * *"
+    weekly-report-cron: "0 0 18 * * SUN"
   source-health:
     spiele-offensive-max-silence: ${SPIELE_OFFENSIVE_MAX_SILENCE:4d}
     milan-max-silence: ${MILAN_MAX_SILENCE:4d}

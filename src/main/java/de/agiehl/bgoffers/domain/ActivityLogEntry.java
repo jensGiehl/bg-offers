@@ -42,6 +42,9 @@ public class ActivityLogEntry {
     @Column(length = 500)
     private String offerName;
 
+    @Column(length = 1500)
+    private String sourceUrl;
+
     @Column(length = 2000)
     private String imageUrl;
 
@@ -71,6 +74,14 @@ public class ActivityLogEntry {
 
     public static ActivityLogEntry priceChanged(Offer offer, BigDecimal previousPrice, Instant occurredAt) {
         return forOffer(ActivityType.PRICE_CHANGED, offer, previousPrice, occurredAt);
+    }
+
+    public static ActivityLogEntry offerSent(Offer offer, Instant occurredAt) {
+        return forOffer(ActivityType.OFFER_SENT, offer, null, occurredAt);
+    }
+
+    public static ActivityLogEntry bestPriceWithheld(Offer offer, Instant occurredAt) {
+        return forOffer(ActivityType.BEST_PRICE_WITHHELD, offer, null, occurredAt);
     }
 
     public static ActivityLogEntry telegramDelivery(boolean successful, Instant occurredAt) {
@@ -117,6 +128,7 @@ public class ActivityLogEntry {
         entry.offerId = offer.getId();
         entry.source = offer.getSource();
         entry.offerName = offer.getName();
+        entry.sourceUrl = offer.getSourceUrl();
         entry.imageUrl = offer.getImageUrl();
         entry.previousPrice = previousPrice;
         entry.currentPrice = offer.getPrice();
@@ -147,6 +159,10 @@ public class ActivityLogEntry {
 
     public String getOfferName() {
         return offerName;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
     }
 
     public String getImageUrl() {
