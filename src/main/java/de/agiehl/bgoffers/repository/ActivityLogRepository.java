@@ -16,6 +16,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLogEntry, L
 
     long countByType(ActivityType type);
 
+    List<ActivityLogEntry> findTop10ByOfferIdAndTypeInOrderByOccurredAtDescIdDesc(
+            Long offerId, Collection<ActivityType> types);
+
     List<ActivityLogEntry> findByTypeInAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAscIdAsc(
             Collection<ActivityType> types, Instant from, Instant until);
 }

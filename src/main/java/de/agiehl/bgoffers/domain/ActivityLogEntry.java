@@ -99,6 +99,26 @@ public class ActivityLogEntry {
         return entry;
     }
 
+    public static ActivityLogEntry telegramDelivery(Offer offer, boolean successful, String detail, Instant occurredAt) {
+        if (offer == null) {
+            return telegramDelivery(successful, detail, occurredAt);
+        }
+        var entry = forOffer(successful ? ActivityType.TELEGRAM_SENT : ActivityType.TELEGRAM_FAILED,
+                offer, null, occurredAt);
+        entry.notificationSent = successful;
+        entry.detail = detail;
+        return entry;
+    }
+
+    public static ActivityLogEntry notificationDecision(Offer offer, Instant occurredAt) {
+        var deferred = offer.getNotificationStatus() == NotificationStatus.WAITING_LOOKUPS
+                || offer.getNotificationStatus() == NotificationStatus.INITIAL_IMPORT_PAUSED;
+        var entry = forOffer(deferred ? ActivityType.NOTIFICATION_DEFERRED : ActivityType.NOTIFICATION_WITHHELD,
+                offer, null, occurredAt);
+        entry.notificationSent = false;
+        return entry;
+    }
+
     public static ActivityLogEntry applicationStarted(String report, boolean notificationSent, Instant occurredAt) {
         var entry = new ActivityLogEntry();
         entry.type = ActivityType.APPLICATION_STARTED;
@@ -151,6 +171,7 @@ public class ActivityLogEntry {
         entry.currentPrice = offer.getPrice();
         entry.bggStatus = offer.getBggStatus();
         entry.comparisonStatus = offer.getComparisonStatus();
+        entry.detail = offer.getNotificationReason();
         if (type != ActivityType.LOOKUP_RETRY) {
             entry.notificationSent = type == ActivityType.OFFER_SENT || offer.isNotificationCurrent();
         }

@@ -58,6 +58,8 @@
                 <i th:case="'PRICE_CHANGED'" class="bi bi-graph-down-arrow" aria-hidden="true"></i>
                 <i th:case="'OFFER_SENT'" class="bi bi-send-check" aria-hidden="true"></i>
                 <i th:case="'BEST_PRICE_WITHHELD'" class="bi bi-pause-circle" aria-hidden="true"></i>
+                <i th:case="'NOTIFICATION_DEFERRED'" class="bi bi-clock" aria-hidden="true"></i>
+                <i th:case="'NOTIFICATION_WITHHELD'" class="bi bi-send-x" aria-hidden="true"></i>
                 <i th:case="'HTTP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'LOOKUP_RETRY'" class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <i th:case="'TELEGRAM_SENT'" class="bi bi-telegram" aria-hidden="true"></i>
@@ -123,6 +125,9 @@
                         </div>
                     </div>
                     <p class="retry-note mb-0 mt-3" th:if="${activity.type.name() == 'LOOKUP_RETRY'}" th:text="${activity.detail}">Erneuter Versuch</p>
+                    <p class="activity-detail mb-0 mt-3"
+                       th:if="${activity.detail != null and activity.type.name() != 'LOOKUP_RETRY' and activity.type.name() != 'TELEGRAM_SENT' and activity.type.name() != 'TELEGRAM_FAILED'}"
+                       th:text="${activity.detail}">Versandbegründung</p>
                 </div>
 
                 <div class="retry-note" th:if="${activity.type.name() == 'HTTP_RETRY'}">

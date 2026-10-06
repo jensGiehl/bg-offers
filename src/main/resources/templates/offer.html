@@ -74,6 +74,42 @@
                     </div>
                 </div>
 
+                <section class="info-panel notification-panel mt-4"
+                         th:classappend="${offer.notificationStatus.name() == 'FAILED' ? 'border border-danger' : ''}"
+                         aria-label="Telegram-Versand">
+                    <p class="eyebrow"><i class="bi bi-telegram me-1" aria-hidden="true"></i>Telegram-Versand</p>
+                    <h2 class="h5" th:classappend="${offer.notificationStatus.name() == 'FAILED' ? 'text-danger' : ''}"
+                        th:text="${offer.notificationStatus.displayName}">Versandstatus</h2>
+                    <p class="text-break mb-2" th:if="${offer.notificationReason != null}"
+                       th:text="${offer.notificationReason}">Begründung</p>
+                    <div th:if="${offer.notificationStatus.name() == 'UNKNOWN'}">
+                        <p class="mb-2">Für diesen älteren Eintrag wurde keine Versandentscheidung protokolliert. Der damalige Grund lässt sich nicht sicher rekonstruieren.</p>
+                        <p class="mb-2" th:if="${offer.notificationCurrent}">Eine erfolgreiche Meldung ist für den aktuellen Stand gespeichert.</p>
+                        <p class="mb-2" th:if="${offer.nextLookupAt != null}">Eine erneute Recherche oder Versandprüfung ist eingeplant.</p>
+                        <p class="text-break mb-2" th:text="'Aktuelle Preisregeln: ' + ${notificationEligibility}">Preisregeln</p>
+                    </div>
+                    <p class="small text-secondary mb-2" th:if="${offer.notificationDecidedAt != null}">
+                        Entscheidung: <time th:datetime="${offer.notificationDecidedAt}"
+                                            th:text="${lookupTimeFormat.format(offer.notificationDecidedAt)}">Datum</time>
+                    </p>
+                    <p class="small mb-2" th:if="${offer.nextLookupAt != null}">
+                        Nächste Recherche oder Versandprüfung:
+                        <strong th:text="${lookupTimeFormat.format(offer.nextLookupAt)}">Datum</strong>
+                    </p>
+                    <details class="mt-3" th:unless="${#lists.isEmpty(notificationHistory)}">
+                        <summary class="fw-semibold">Letzte Versandentscheidungen und Zustellungen</summary>
+                        <ul class="list-unstyled small mb-0 mt-3">
+                            <li class="border-top pt-2 mt-2 text-break" th:each="event : ${notificationHistory}">
+                                <strong th:classappend="${event.type.name() == 'TELEGRAM_FAILED' ? 'text-danger' : ''}"
+                                        th:text="${event.type.displayName}">Versandentscheidung</strong>
+                                <time class="d-block text-secondary" th:datetime="${event.occurredAt}"
+                                      th:text="${lookupTimeFormat.format(event.occurredAt)}">Datum</time>
+                                <p class="activity-detail mb-0" th:text="${event.detail ?: 'Keine weiteren Details gespeichert.'}">Details</p>
+                            </li>
+                        </ul>
+                    </details>
+                </section>
+
                 <div class="timestamps mt-4">
                     <span>Erfasst <strong th:text="${offerTimeFormat.format(offer.firstSeenAt)}">Datum</strong></span>
                     <span>Zuletzt gesehen <strong th:text="${offerTimeFormat.format(offer.lastSeenAt)}">Datum</strong></span>

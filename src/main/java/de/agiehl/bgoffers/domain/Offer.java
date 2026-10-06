@@ -128,6 +128,18 @@ public class Offer {
 
     private Instant notifiedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private NotificationStatus notificationStatus = NotificationStatus.UNKNOWN;
+
+    @Column(length = 2000)
+    private String notificationReason;
+
+    private Instant notificationDecidedAt;
+
+    @Column(length = 1000)
+    private String notificationError;
+
     protected Offer() {
     }
 
@@ -382,5 +394,31 @@ public class Offer {
 
     public void setNotifiedAt(Instant notifiedAt) {
         this.notifiedAt = notifiedAt;
+    }
+
+    public NotificationStatus getNotificationStatus() {
+        return notificationStatus;
+    }
+
+    public String getNotificationReason() {
+        return notificationReason;
+    }
+
+    public Instant getNotificationDecidedAt() {
+        return notificationDecidedAt;
+    }
+
+    public void recordNotificationDecision(NotificationStatus status, String reason, Instant now) {
+        notificationStatus = status;
+        notificationReason = reason;
+        notificationDecidedAt = now;
+    }
+
+    public String getNotificationError() {
+        return notificationError;
+    }
+
+    public void setNotificationError(String notificationError) {
+        this.notificationError = notificationError;
     }
 }

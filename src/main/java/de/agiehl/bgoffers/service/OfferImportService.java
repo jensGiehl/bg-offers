@@ -3,6 +3,7 @@ package de.agiehl.bgoffers.service;
 import de.agiehl.bgoffers.config.OfferProperties;
 import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.domain.LookupTarget;
+import de.agiehl.bgoffers.domain.NotificationStatus;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
@@ -12,6 +13,8 @@ import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import de.agiehl.bgoffers.pricecomparison.PriceComparisonResult;
 import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
+import de.agiehl.bgoffers.notification.OfferNotificationPolicy;
+import de.agiehl.bgoffers.notification.NotificationFailure;
 import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.scraper.OfferScraper;
 import de.agiehl.bgoffers.scraper.ScrapedOffer;
@@ -27,6 +30,8 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -38,7 +43,8 @@ public class OfferImportService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OfferImportService.class);
     private static final Duration INITIAL_IMPORT_NOTIFICATION_PAUSE = Duration.ofHours(2);
-    private static final BigDecimal BEST_PRICE_NOTIFICATION_FACTOR = new BigDecimal("1.10");
+    private static final DateTimeFormatter NOTIFICATION_TIME_FORMAT = DateTimeFormatter
+            .ofPattern("dd.MM.yyyy HH:mm:ss").withZone(ZoneId.of("Europe/Berlin"));
 
     private final List<OfferScraper> scrapers;
     private final OfferRepository repository;
@@ -242,6 +248,12 @@ public class OfferImportService {
         offer = repository.save(offer);
         if (!pending) {
             notifyWhenRelevant(offer, now);
+        } else {
+            recordDecision(offer, NotificationStatus.WAITING_LOOKUPS,
+                    "Die Nachricht wartet auf den Abschluss der Recherche für "
+                            + (offer.isBggLookupPending() && offer.isComparisonLookupPending()
+                            ? "BoardGameGeek und den Preisvergleich."
+                            : offer.isBggLookupPending() ? "BoardGameGeek." : "den Preisvergleich."), now, true);
         }
         return offer;
     }
@@ -277,54 +289,71 @@ public class OfferImportService {
     private void notifyWhenRelevant(Offer offer, Instant now) {
         if (now.isBefore(initialImportEndsAt)) {
             offer.setNextLookupAt(initialImportEndsAt);
-            repository.save(offer);
+            recordDecision(offer, NotificationStatus.INITIAL_IMPORT_PAUSED,
+                    "INITIAL_IMPORT=true: Angebotsmeldungen sind in den ersten zwei Stunden nach dem Anwendungsstart pausiert. "
+                            + "Erneute Versandprüfung ab " + NOTIFICATION_TIME_FORMAT.format(initialImportEndsAt)
+                            + " (Europe/Berlin).", now, true);
             return;
         }
-        if (exceedsBestPriceLimit(offer)) {
-            activityLogService.recordBestPriceWithheld(offer, now);
-            return;
-        }
-        if (!shouldNotify(offer)) {
+        var decision = OfferNotificationPolicy.evaluate(offer);
+        if (!decision.eligible()) {
+            offer.setNextLookupAt(null);
+            var changed = recordDecision(offer, NotificationStatus.WITHHELD, decision.reason(), now,
+                    !decision.bestPriceWithheld());
+            if (decision.bestPriceWithheld() && changed) {
+                activityLogService.recordBestPriceWithheld(offer, now);
+            }
             return;
         }
         var fingerprint = fingerprint(offer);
         if (fingerprint.equals(offer.getNotificationFingerprint())) {
+            offer.setNextLookupAt(null);
+            recordDecision(offer, NotificationStatus.DUPLICATE,
+                    "Dieses Angebot mit demselben Preis wurde bereits erfolgreich gemeldet; kein erneuter Versand. "
+                            + decision.reason(), now, false);
             return;
         }
-        if (notifier.sendOffer(offer)) {
+        offer.setNotificationError(null);
+        boolean successful;
+        try {
+            successful = notifier.sendOffer(offer);
+        } catch (RuntimeException exception) {
+            offer.setNotificationError(NotificationFailure.detail(
+                    exception.getClass().getSimpleName() + ": " + exception.getMessage(), properties.telegram()));
+            activityLogService.recordTelegramDelivery(offer, false, offer.getNotificationError());
+            successful = false;
+        }
+        if (successful) {
             offer.setNotificationFingerprint(fingerprint);
             offer.setNotifiedAt(now);
-            repository.save(offer);
+            offer.setNextLookupAt(null);
+            recordDecision(offer,
+                    properties.telegram().configured() ? NotificationStatus.SENT : NotificationStatus.CONSOLE_ONLY,
+                    decision.reason() + (properties.telegram().configured()
+                            ? " Telegram hat die Zustellung bestätigt."
+                            : " Telegram ist nicht konfiguriert; die Meldung wurde ausschließlich im Anwendungslog ausgegeben."),
+                    now, false);
             activityLogService.recordOfferSent(offer, now);
         } else {
+            if (offer.getNotificationError() == null) {
+                offer.setNotificationError("Der Nachrichtendienst hat den Versand nicht bestätigt; keine weiteren Fehlerdetails verfügbar.");
+                activityLogService.recordTelegramDelivery(offer, false, offer.getNotificationError());
+            }
             offer.setNextLookupAt(now.plus(properties.http().lookupRetryDelay()));
-            repository.save(offer);
+            recordDecision(offer, NotificationStatus.FAILED,
+                    decision.reason() + " Technischer Versandfehler: " + offer.getNotificationError()
+                            + " Automatischer Wiederholungsversuch ist eingeplant.", now, false);
         }
     }
 
-    private boolean exceedsBestPriceLimit(Offer offer) {
-        return offer.getSource() != OfferSource.UNKNOWNS
-                && offer.getComparisonBestPrice() != null
-                && (offer.getPrice() == null
-                || offer.getPrice().compareTo(
-                        offer.getComparisonBestPrice().multiply(BEST_PRICE_NOTIFICATION_FACTOR)) > 0);
-    }
-
-    private boolean shouldNotify(Offer offer) {
-        if (offer.getSource() == OfferSource.UNKNOWNS
-                || offer.getComparisonBestPrice() == null
-                || offer.getType() == OfferType.SPIELESCHMIEDE || offer.getType() == OfferType.FORUM_POST) {
-            return true;
+    private boolean recordDecision(Offer offer, NotificationStatus status, String reason, Instant now, boolean log) {
+        var changed = offer.getNotificationStatus() != status || !Objects.equals(offer.getNotificationReason(), reason);
+        offer.recordNotificationDecision(status, reason, now);
+        repository.save(offer);
+        if (changed && log) {
+            activityLogService.recordNotificationDecision(offer, now);
         }
-        var lookupMissing = offer.getBggStatus() != LookupStatus.FOUND
-                || offer.getComparisonStatus() != LookupStatus.FOUND;
-        var betterThanComparison = offer.getPrice() != null
-                && offer.getComparisonAvailablePrice() != null
-                && offer.getPrice().compareTo(offer.getComparisonAvailablePrice()) < 0;
-        if (offer.getSource() == OfferSource.BGG_MARKET) {
-            return betterThanComparison;
-        }
-        return lookupMissing || betterThanComparison;
+        return changed;
     }
 
     private Optional<Offer> findExisting(ScrapedOffer scraped) {

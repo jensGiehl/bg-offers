@@ -1,6 +1,7 @@
 package de.agiehl.bgoffers.web;
 
 import de.agiehl.bgoffers.domain.LookupStatus;
+import de.agiehl.bgoffers.domain.NotificationStatus;
 import de.agiehl.bgoffers.domain.ActivityLogEntry;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
@@ -284,6 +285,68 @@ class OfferWebIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Zauberberg")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("Zauberberg (deutsch) Würfelspiel"))));
+    }
+
+    @Test
+    void rendersAssociatedDeliveryFailuresAndKeepsThemAfterSuccess() throws Exception {
+        var now = Instant.parse("2028-10-06T20:08:00Z");
+        var offer = Offer.create(OfferSource.BGG_MARKET, OfferType.STANDARD,
+                "Men-Nefer Versandtest", "https://shop.example/notification-failure", now);
+        offer.recordNotificationDecision(NotificationStatus.FAILED,
+                "Preisregeln erfüllt. Technischer Versandfehler: sendPhoto: HTTP 400 – PHOTO_INVALID_DIMENSIONS", now);
+        offer.setNotificationError("sendPhoto: HTTP 400 – PHOTO_INVALID_DIMENSIONS");
+        offer.setNextLookupAt(now.plusSeconds(180));
+        var saved = repository.saveAndFlush(offer);
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(saved, false,
+                offer.getNotificationError(), now));
+
+        mockMvc.perform(get("/angebote/{id}", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    var panel = Jsoup.parse(result.getResponse().getContentAsString()).selectFirst(".notification-panel");
+                    assertThat(panel.text()).contains("Telegram-Versand fehlgeschlagen", "PHOTO_INVALID_DIMENSIONS",
+                            "Nächste Recherche oder Versandprüfung", "06.10.2028 22:11:00");
+                    assertThat(panel.classNames()).contains("border-danger");
+                });
+        mockMvc.perform(get("/aktivitaeten"))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    var entry = Jsoup.parse(result.getResponse().getContentAsString())
+                            .selectFirst(".activity-telegram_failed");
+                    assertThat(entry.text()).contains("Men-Nefer Versandtest", "PHOTO_INVALID_DIMENSIONS");
+                    assertThat(entry.selectFirst(".preview-title").attr("href"))
+                            .isEqualTo("/angebote/" + saved.getId());
+                });
+
+        saved.recordNotificationDecision(NotificationStatus.SENT, "Preisregeln erfüllt; Telegram hat die Zustellung bestätigt.", now.plusSeconds(180));
+        saved.setNextLookupAt(null);
+        saved.setNotificationError(null);
+        repository.saveAndFlush(saved);
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(saved, true, "Men-Nefer", now.plusSeconds(180)));
+
+        mockMvc.perform(get("/angebote/{id}", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    var panel = Jsoup.parse(result.getResponse().getContentAsString()).selectFirst(".notification-panel");
+                    assertThat(panel.selectFirst("h2").text()).isEqualTo("Telegram-Nachricht versendet");
+                    assertThat(panel.select("details").text()).contains("PHOTO_INVALID_DIMENSIONS");
+                });
+    }
+
+    @Test
+    void explainsUnknownHistoricalDecisionsWithoutInventingAReason() throws Exception {
+        var offer = Offer.create(OfferSource.BGG_MARKET, OfferType.STANDARD,
+                "Men-Nefer Altdaten", "https://shop.example/notification-legacy", Instant.parse("2028-10-06T20:00:00Z"));
+        offer.setPrice(new BigDecimal("40.00"));
+        offer.setComparisonBestPrice(new BigDecimal("49.85"));
+        offer.setComparisonAvailablePrice(new BigDecimal("54.95"));
+        var saved = repository.saveAndFlush(offer);
+
+        mockMvc.perform(get("/angebote/{id}", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(Jsoup.parse(result.getResponse().getContentAsString())
+                        .selectFirst(".notification-panel").text()).contains("keine Versandentscheidung protokolliert",
+                        "Aktuelle Preisregeln", "40,00 €", "54,95 €", "49,85 €"));
     }
 
     private void assertAppearsBefore(String html, String first, String second) {

@@ -62,6 +62,14 @@ public class ActivityLogService {
         save(ActivityLogEntry.telegramDelivery(successful, detail, Instant.now(clock)));
     }
 
+    public void recordTelegramDelivery(Offer offer, boolean successful, String detail) {
+        save(ActivityLogEntry.telegramDelivery(offer, successful, detail, Instant.now(clock)));
+    }
+
+    public void recordNotificationDecision(Offer offer, Instant occurredAt) {
+        save(ActivityLogEntry.notificationDecision(offer, occurredAt));
+    }
+
     public void recordApplicationStarted(String report, boolean notificationSent) {
         save(ActivityLogEntry.applicationStarted(report, notificationSent, Instant.now(clock)));
     }

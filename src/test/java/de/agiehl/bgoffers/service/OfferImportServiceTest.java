@@ -4,6 +4,7 @@ import de.agiehl.bgoffers.TestProperties;
 import de.agiehl.bgoffers.domain.ActivityLogEntry;
 import de.agiehl.bgoffers.domain.ActivityType;
 import de.agiehl.bgoffers.domain.LookupStatus;
+import de.agiehl.bgoffers.domain.NotificationStatus;
 import de.agiehl.bgoffers.domain.Offer;
 import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
@@ -136,6 +137,9 @@ class OfferImportServiceTest {
 
         currentTime.set(startedAt.plus(Duration.ofMinutes(30)));
         service.importAll();
+        assertThat(stored.get().getNotificationStatus()).isEqualTo(NotificationStatus.INITIAL_IMPORT_PAUSED);
+        assertThat(stored.get().getNotificationReason()).contains("INITIAL_IMPORT=true", "24.09.2026 14:00:00");
+        assertThat(stored.get().getNextLookupAt()).isEqualTo(startedAt.plus(Duration.ofHours(2)));
         currentTime.set(startedAt.plus(Duration.ofHours(2)));
         service.importAll();
 
@@ -393,6 +397,7 @@ class OfferImportServiceTest {
             "MILAN, FOUND, 30.00, , 30.00, true",
             "MILAN, NOT_CONFIGURED, 35.00, , 30.00, true",
             "BGG_MARKET, FOUND, 19.99, 20.00, 30.00, true",
+            "BGG_MARKET, FOUND, 40.00, 49.85, 54.95, true",
             "BGG_MARKET, FOUND, 22.00, 20.00, 30.00, true",
             "BGG_MARKET, FOUND, 22.01, 20.00, 30.00, false",
             "BGG_MARKET, NOT_CONFIGURED, 22.01, 20.00, 30.00, false",
@@ -512,6 +517,54 @@ class OfferImportServiceTest {
         assertThat(offer.isNotificationCurrent()).isFalse();
         assertThat(changed.getNotificationSent()).isFalse();
         assertThat(sent.getNotificationSent()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void persistsDeliveryFailuresAndRetriesWithoutSuppressingTheOffer(boolean throwsException) {
+        var now = Instant.parse("2026-10-06T20:08:00Z");
+        var offer = Offer.create(OfferSource.BGG_MARKET, OfferType.STANDARD,
+                "Men-Nefer", "https://boardgamegeek.com/market/product/4156391", now);
+        offer.setPrice(new BigDecimal("40.00"));
+        offer.setComparisonBestPrice(new BigDecimal("49.85"));
+        offer.setComparisonAvailablePrice(new BigDecimal("54.95"));
+        offer.setBggStatus(LookupStatus.FOUND);
+        offer.setComparisonStatus(LookupStatus.FOUND);
+        offer.setNextLookupAt(now);
+        var repository = mock(OfferRepository.class);
+        when(repository.save(any(Offer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(repository.findTop50ByNextLookupAtLessThanEqualOrderByNextLookupAtAsc(any(Instant.class)))
+                .thenReturn(List.of(offer));
+        var notifier = mock(OfferNotifier.class);
+        if (throwsException) {
+            when(notifier.sendOffer(offer)).thenThrow(new IllegalStateException("Connection reset"))
+                    .thenReturn(true);
+        } else {
+            when(notifier.sendOffer(offer)).thenReturn(false, true);
+        }
+        var activities = mock(ActivityLogService.class);
+        var service = new OfferImportService(List.of(), repository, mock(BggLookupService.class),
+                mock(PriceComparisonService.class), notifier, activities, TestProperties.create(),
+                new GameNameNormalizer(), Clock.fixed(now, ZoneOffset.UTC));
+
+        service.processPendingLookups();
+
+        assertThat(offer.getNotificationStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(offer.getNotificationReason()).contains("40,00 €", "54,95 €", "49,85 €", "Versandfehler");
+        assertThat(offer.getNotifiedAt()).isNull();
+        assertThat(offer.getNotificationFingerprint()).isNull();
+        assertThat(offer.getNextLookupAt()).isEqualTo(now.plus(TestProperties.create().http().lookupRetryDelay()));
+        verify(activities).recordTelegramDelivery(eq(offer), eq(false), any(String.class));
+
+        service.processPendingLookups();
+
+        assertThat(offer.getNotificationStatus()).isEqualTo(NotificationStatus.CONSOLE_ONLY);
+        assertThat(offer.getNotificationReason()).contains("Telegram ist nicht konfiguriert");
+        assertThat(offer.getNotificationError()).isNull();
+        assertThat(offer.getNotificationFingerprint()).isNotBlank();
+        assertThat(offer.getNotifiedAt()).isEqualTo(now);
+        assertThat(offer.getNextLookupAt()).isNull();
+        verify(notifier, times(2)).sendOffer(offer);
     }
 
     private ScrapedOffer bggMarketOffer(String productId, String price) {

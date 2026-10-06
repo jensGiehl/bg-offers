@@ -69,7 +69,7 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 "chat_id", properties.telegram().chatId(),
                 "text", message,
                 "parse_mode", "HTML",
-                "disable_web_page_preview", "true"));
+                "disable_web_page_preview", "true"), offer);
     }
 
     @Override
@@ -226,12 +226,16 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
     }
 
     private boolean send(String method, List<Field> fields) {
+        return send(method, fields, null);
+    }
+
+    private boolean send(String method, List<Field> fields, Offer offer) {
         var body = fields.stream()
                 .map(field -> encode(field.name()) + "=" + encode(field.value()))
                 .reduce((left, right) -> left + "&" + right)
                 .orElse("");
         return send(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8),
-                "application/x-www-form-urlencoded; charset=UTF-8", messageDetail(fields));
+                "application/x-www-form-urlencoded; charset=UTF-8", messageDetail(fields), offer);
     }
 
     private boolean sendPhoto(Offer offer, List<Field> fields) {
@@ -252,15 +256,15 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
             return send("sendPhoto", HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new)),
                     "multipart/form-data; boundary=" + boundary,
                     "Bildnachricht\n" + (offer.getType() == OfferType.SPIELESCHMIEDE
-                            ? plainText(offer) : messageDetail(fields)));
+                            ? plainText(offer) : messageDetail(fields)), offer);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             LOGGER.error("Telegram-Bildverarbeitung wurde unterbrochen");
-            recordFailure("Bildverarbeitung wurde unterbrochen");
+            recordFailure(offer, "Bildverarbeitung wurde unterbrochen");
             return false;
         } catch (IOException | RuntimeException exception) {
             LOGGER.error("Telegram-Bildverarbeitung ist fehlgeschlagen: {}", exception.getMessage());
-            recordFailure("Bildverarbeitung: " + exception.getMessage());
+            recordFailure(offer, "Bildverarbeitung: " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
             return false;
         }
     }
@@ -276,7 +280,7 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
         return document.body().wholeText();
     }
 
-    private boolean send(String method, HttpRequest.BodyPublisher body, String contentType, String detail) {
+    private boolean send(String method, HttpRequest.BodyPublisher body, String contentType, String detail, Offer offer) {
         try {
             var endpoint = URI.create("https://api.telegram.org/bot" + properties.telegram().botToken() + "/" + method);
             var request = HttpRequest.newBuilder(endpoint)
@@ -290,27 +294,37 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                     && response.body().contains("\"ok\":true");
             if (!successful) {
                 LOGGER.error("Telegram-Aufruf {} ist mit HTTP {} fehlgeschlagen", method, response.statusCode());
-                recordFailure("%s: HTTP %d – %s".formatted(method, response.statusCode(), response.body()));
+                recordFailure(offer, "%s: HTTP %d – %s".formatted(method, response.statusCode(), response.body()));
             } else {
-                activityLogService.recordTelegramDelivery(true, shorten(detail, 10000));
+                recordDelivery(offer, true, shorten(detail, 10000));
             }
             return successful;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             LOGGER.error("Telegram-Aufruf {} wurde unterbrochen", method);
-            recordFailure(method + ": Versand wurde unterbrochen");
+            recordFailure(offer, method + ": Versand wurde unterbrochen");
             return false;
         } catch (IOException | RuntimeException exception) {
             LOGGER.error("Telegram-Aufruf {} ist fehlgeschlagen: {}", method, exception.getMessage());
-            recordFailure(method + ": " + exception.getMessage());
+            recordFailure(offer, method + ": " + exception.getMessage());
             return false;
         }
     }
 
-    private void recordFailure(String detail) {
-        var sanitized = detail.replace(properties.telegram().botToken(), "[Token entfernt]")
-                .replace(properties.telegram().chatId(), "[Chat entfernt]");
-        activityLogService.recordTelegramDelivery(false, shorten(sanitized, 1000));
+    private void recordFailure(Offer offer, String detail) {
+        var sanitized = NotificationFailure.detail(detail, properties.telegram());
+        if (offer != null) {
+            offer.setNotificationError(sanitized);
+        }
+        recordDelivery(offer, false, sanitized);
+    }
+
+    private void recordDelivery(Offer offer, boolean successful, String detail) {
+        if (offer == null) {
+            activityLogService.recordTelegramDelivery(successful, detail);
+        } else {
+            activityLogService.recordTelegramDelivery(offer, successful, detail);
+        }
     }
 
     private List<Field> fields(String... values) {

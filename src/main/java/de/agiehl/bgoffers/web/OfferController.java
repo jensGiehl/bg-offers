@@ -5,6 +5,7 @@ import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.ActivityType;
 import de.agiehl.bgoffers.domain.LookupStatus;
 import de.agiehl.bgoffers.domain.Offer;
+import de.agiehl.bgoffers.notification.OfferNotificationPolicy;
 import de.agiehl.bgoffers.enrichment.GameNameNormalizer;
 import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.repository.OfferRepository;
@@ -123,6 +124,12 @@ public class OfferController {
         model.addAttribute("offer", offer);
         model.addAttribute("offerTimeFormat", OFFER_TIME_FORMAT);
         model.addAttribute("lookupTimeFormat", BUILD_TIME_FORMAT);
+        model.addAttribute("notificationEligibility", OfferNotificationPolicy.evaluate(offer).reason());
+        model.addAttribute("notificationHistory",
+                activityLogRepository.findTop10ByOfferIdAndTypeInOrderByOccurredAtDescIdDesc(id,
+                        List.of(ActivityType.TELEGRAM_SENT, ActivityType.TELEGRAM_FAILED,
+                                ActivityType.OFFER_SENT, ActivityType.BEST_PRICE_WITHHELD,
+                                ActivityType.NOTIFICATION_DEFERRED, ActivityType.NOTIFICATION_WITHHELD)));
         return "offer";
     }
 

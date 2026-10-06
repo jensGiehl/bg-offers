@@ -6,6 +6,8 @@ public enum ActivityType {
     PRICE_CHANGED("Preis geändert"),
     OFFER_SENT("Angebot versendet"),
     BEST_PRICE_WITHHELD("Bestpreisgrenze nicht erreicht"),
+    NOTIFICATION_DEFERRED("Meldung zurückgestellt"),
+    NOTIFICATION_WITHHELD("Meldung nicht versendet"),
     HTTP_RETRY("HTTP-Abruf wird wiederholt"),
     LOOKUP_RETRY("Recherche wird wiederholt"),
     TELEGRAM_SENT("Telegram-Nachricht versendet"),
