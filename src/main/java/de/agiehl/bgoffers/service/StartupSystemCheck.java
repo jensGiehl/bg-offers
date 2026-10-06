@@ -94,9 +94,7 @@ public class StartupSystemCheck implements ApplicationRunner {
             var offers = scraper.scrape();
             return offers.isEmpty()
                     ? CheckResult.failed(source, "keine Ergebnisse")
-                    : CheckResult.successful(
-                            source,
-                            "%d %s".formatted(offers.size(), offers.size() == 1 ? "Ergebnis" : "Ergebnisse"));
+                    : CheckResult.successful(source);
         } catch (RuntimeException exception) {
             LOGGER.error("Systemcheck für {} ist fehlgeschlagen: {}", source, exception.getMessage());
             return CheckResult.failed(source, errorMessage(exception));
@@ -106,7 +104,7 @@ public class StartupSystemCheck implements ApplicationRunner {
     private CheckResult checkPriceComparison() {
         try {
             return priceComparisonService.healthCheck()
-                    ? CheckResult.successful("brettspiel-angebote.de", "Preisdaten für „Scythe“ gefunden")
+                    ? CheckResult.successful("brettspiel-angebote.de")
                     : CheckResult.failed("brettspiel-angebote.de", "keine Preisdaten für „Scythe“");
         } catch (RuntimeException exception) {
             LOGGER.error("Systemcheck für brettspiel-angebote.de ist fehlgeschlagen: {}", exception.getMessage());
@@ -141,14 +139,14 @@ public class StartupSystemCheck implements ApplicationRunner {
                 : exception.getMessage();
     }
 
-    private record CheckResult(String target, String successMessage, String error) {
+    private record CheckResult(String target, String error) {
 
-        private static CheckResult successful(String target, String successMessage) {
-            return new CheckResult(target, successMessage, null);
+        private static CheckResult successful(String target) {
+            return new CheckResult(target, null);
         }
 
         private static CheckResult failed(String target, String error) {
-            return new CheckResult(target, null, error);
+            return new CheckResult(target, error);
         }
 
         private boolean successful() {
@@ -157,7 +155,7 @@ public class StartupSystemCheck implements ApplicationRunner {
 
         private String description() {
             return successful()
-                    ? "%s: %s".formatted(target, successMessage)
+                    ? "%s: ✅".formatted(target)
                     : "%s: FEHLER – %s".formatted(target, error);
         }
     }

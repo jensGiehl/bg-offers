@@ -76,7 +76,7 @@
                     </div>
                     <time class="activity-time"
                           th:datetime="${activity.occurredAt}"
-                          th:text="${#temporals.format(activity.occurredAt, 'dd.MM.yyyy · HH:mm')}">24.09.2026 · 12:00</time>
+                          th:text="${activityTimeFormat.format(activity.occurredAt)}">24.09.2026 · 12:00</time>
                 </div>
 
                 <div th:if="${activity.offerId != null}">
@@ -134,7 +134,8 @@
                      th:if="${activity.type.name() == 'TELEGRAM_SENT' or activity.type.name() == 'TELEGRAM_FAILED'}">
                     <i class="bi" aria-hidden="true"
                        th:classappend="${activity.type.name() == 'TELEGRAM_SENT' ? 'bi-shield-check' : 'bi-shield-x'}"></i>
-                    <p class="mb-0" th:if="${activity.type.name() == 'TELEGRAM_SENT'}">Die Nachricht wurde erfolgreich übermittelt.</p>
+                    <p class="mb-0 activity-detail" th:if="${activity.type.name() == 'TELEGRAM_SENT'}"
+                       th:text="${activity.detail != null ? activity.detail : 'Nachrichteninhalt für diesen älteren Eintrag nicht verfügbar.'}">Versendeter Inhalt</p>
                     <p class="mb-0 activity-detail" th:unless="${activity.type.name() == 'TELEGRAM_SENT'}"
                        th:text="${activity.detail != null ? activity.detail : 'Die Nachricht konnte nicht übermittelt werden.'}">Telegram-Fehler</p>
                 </div>

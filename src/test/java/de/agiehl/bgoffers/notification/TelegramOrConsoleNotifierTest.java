@@ -51,7 +51,10 @@ class TelegramOrConsoleNotifierTest {
                 StandardCharsets.UTF_8)).contains("parse_mode=HTML",
                 "link_preview_options={\"is_disabled\":true}",
                 "<a href=\"https://shop.example/offer\">Testspiel</a>");
-        verify(activityLog).recordTelegramDelivery(true);
+        var detail = ArgumentCaptor.forClass(String.class);
+        verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(true), detail.capture());
+        assertThat(detail.getValue()).contains("Wochenreport", "Testspiel (https://shop.example/offer)")
+                .doesNotContain("<a", "<b>", "chat-id", "test-token");
     }
 
     @Test
@@ -146,7 +149,10 @@ class TelegramOrConsoleNotifierTest {
                 "name=\"photo\"; filename=\"offer.png\"\r\nContent-Type: image/png\r\n\r\n");
         assertThat(text).endsWith("\r\n--" + contentType.substring(contentType.indexOf("boundary=") + 9) + "--\r\n");
         assertThat(text).doesNotContain(offer.getImageUrl());
-        verify(activityLog).recordTelegramDelivery(true);
+        verify(activityLog).recordTelegramDelivery(true, """
+                Bildnachricht
+                🎲 Grüße & Würfel
+                🔗 Angebot (https://shop.example/offer)""");
     }
 
     @Test
@@ -157,7 +163,8 @@ class TelegramOrConsoleNotifierTest {
         var renderer = mock(TelegramOfferImage.class);
         when(renderer.render(offer)).thenReturn(new byte[]{1, 2, 3});
         var client = telegramClient(200, "{\"ok\":true}");
-        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog, renderer, client);
 
         assertThat(notifier.sendOffer(offer)).isTrue();
 
@@ -166,6 +173,7 @@ class TelegramOrConsoleNotifierTest {
         assertThat(new String(requestBody(request), StandardCharsets.UTF_8))
                 .contains("name=\"photo\"").doesNotContain("name=\"caption\"", "name=\"parse_mode\"");
         verify(renderer).render(offer);
+        verify(activityLog).recordTelegramDelivery(true, "Bildnachricht\n" + notifier.plainText(offer));
     }
 
     @Test
@@ -190,12 +198,32 @@ class TelegramOrConsoleNotifierTest {
     void sendsOffersWithoutImagesAsText() throws Exception {
         var renderer = mock(TelegramOfferImage.class);
         var client = telegramClient(200, "{\"ok\":true}");
-        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog, renderer, client);
 
         assertThat(notifier.sendOffer(offer())).isTrue();
 
         assertThat(sentRequest(client).uri().getPath()).endsWith("/sendMessage");
         verifyNoInteractions(renderer);
+        verify(activityLog).recordTelegramDelivery(true, """
+                🎲 Testspiel
+                🔗 Angebot (https://shop.example/offer)""");
+    }
+
+    @Test
+    void recordsTheSystemCheckContentWithLineBreaksAndDecodedHtml() throws Exception {
+        var client = telegramClient(200, "{\"ok\":true}");
+        var activityLog = mock(ActivityLogService.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog,
+                mock(TelegramOfferImage.class), client);
+
+        assertThat(notifier.sendSystemCheck(true, "Commit: 0123456\nMilan-Spiele: ✅\nTest <Quelle> & Preis")).isTrue();
+
+        verify(activityLog).recordTelegramDelivery(true, """
+                ✅ Systemcheck erfolgreich
+                Commit: 0123456
+                Milan-Spiele: ✅
+                Test <Quelle> & Preis""");
     }
 
     @Test

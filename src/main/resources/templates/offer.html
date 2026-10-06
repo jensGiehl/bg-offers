@@ -75,9 +75,9 @@
                 </div>
 
                 <div class="timestamps mt-4">
-                    <span>Erfasst <strong th:text="${#temporals.format(offer.firstSeenAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
-                    <span>Zuletzt gesehen <strong th:text="${#temporals.format(offer.lastSeenAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
-                    <span>Letzte Änderung <strong th:text="${#temporals.format(offer.lastChangedAt, 'dd.MM.yyyy HH:mm')}">Datum</strong></span>
+                    <span>Erfasst <strong th:text="${offerTimeFormat.format(offer.firstSeenAt)}">Datum</strong></span>
+                    <span>Zuletzt gesehen <strong th:text="${offerTimeFormat.format(offer.lastSeenAt)}">Datum</strong></span>
+                    <span>Letzte Änderung <strong th:text="${offerTimeFormat.format(offer.lastChangedAt)}">Datum</strong></span>
                 </div>
             </div>
         </div>

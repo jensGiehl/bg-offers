@@ -9,6 +9,8 @@ import de.agiehl.bgoffers.repository.OfferRepository;
 import de.agiehl.bgoffers.repository.ActivityLogRepository;
 import de.agiehl.bgoffers.service.WeeklyReportService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.info.BuildProperties;
@@ -50,6 +52,30 @@ class OfferWebIntegrationTest {
 
     @Autowired
     private WeeklyReportService weeklyReportService;
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026-10-06T19:44:00Z, 06.10.2026 · 21:44, 06.10.2026 21:44",
+            "2026-01-06T19:44:00Z, 06.01.2026 · 20:44, 06.01.2026 20:44"
+    })
+    void rendersActivityAndOfferTimesInBerlin(String timestamp, String activityTime, String offerTime) throws Exception {
+        var occurredAt = Instant.parse(timestamp);
+        var offer = repository.saveAndFlush(Offer.create(OfferSource.MILAN, OfferType.STANDARD,
+                "Zeitzonentest " + timestamp, "https://shop.example/timezone/" + timestamp, occurredAt));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.offerFound(offer, occurredAt));
+
+        mockMvc.perform(get("/aktivitaeten"))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    var document = Jsoup.parse(result.getResponse().getContentAsString());
+                    assertThat(document.select("time[datetime=\"" + timestamp + "\"]").eachText())
+                            .contains(activityTime);
+                });
+        mockMvc.perform(get("/angebote/{id}", offer.getId()))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(Jsoup.parse(result.getResponse().getContentAsString())
+                        .select(".timestamps strong").eachText()).containsExactly(offerTime, offerTime, offerTime));
+    }
 
     @Test
     void persistsWeeklyDecisionsAndHonorsInclusiveStartAndExclusiveEnd() throws Exception {
@@ -181,11 +207,14 @@ class OfferWebIntegrationTest {
                 2,
                 3,
                 now.plusSeconds(45)));
-        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(true, now.plusSeconds(60)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(true,
+                "🎲 Telegram-Testspiel <Sonderedition>\n🔗 Angebot (https://shop.example/telegram-offer)",
+                now.plusSeconds(60)));
+        activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(true, now.plusSeconds(61)));
         activityLogRepository.saveAndFlush(ActivityLogEntry.telegramDelivery(false,
                 "sendMessage: HTTP 403 – Forbidden: bot was blocked", now.plusSeconds(90)));
         activityLogRepository.saveAndFlush(ActivityLogEntry.applicationStarted(
-                "Commit: 0123456\nMilan-Spiele: 3 Ergebnisse", true, now.plusSeconds(120)));
+                "Commit: 0123456\nMilan-Spiele: ✅", true, now.plusSeconds(120)));
 
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
@@ -197,6 +226,7 @@ class OfferWebIntegrationTest {
                     assertThat(version.text()).isEqualTo("0123456");
                     assertThat(version.attr("title")).isEqualTo("0123456789abcdef0123456789abcdef01234567");
                     assertThat(timestamp.attr("datetime")).isEqualTo(buildProperties.getTime().toString());
+                    assertThat(buildProperties.getTime()).isAfter(Instant.parse("2026-01-01T00:00:00Z"));
                     assertThat(timestamp.text()).matches("\\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}:\\d{2} MES?Z");
                 })
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Bestpreis")))
@@ -229,10 +259,18 @@ class OfferWebIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Versuch 2 von 3")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("HTTP 500")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Telegram-Nachricht versendet")))
+                .andExpect(result -> {
+                    var document = Jsoup.parse(result.getResponse().getContentAsString());
+                    assertThat(document.select(".telegram-note .activity-detail").eachText())
+                            .contains("🎲 Telegram-Testspiel <Sonderedition> 🔗 Angebot (https://shop.example/telegram-offer)",
+                                    "Nachrichteninhalt für diesen älteren Eintrag nicht verfügbar.");
+                    assertThat(document.select(".telegram-note Sonderedition")).isEmpty();
+                    assertThat(document.text()).doesNotContain("Die Nachricht wurde erfolgreich übermittelt.");
+                })
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("HTTP 403 – Forbidden: bot was blocked")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Anwendung gestartet")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Commit: 0123456")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Milan-Spiele: 3 Ergebnisse")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Milan-Spiele: ✅")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "src=\"" + UNKNOWNS_LOGO_URL + "\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(

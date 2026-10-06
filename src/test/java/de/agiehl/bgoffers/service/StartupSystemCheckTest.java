@@ -35,8 +35,8 @@ class StartupSystemCheckTest {
             return true;
         }).when(notifier).sendSystemCheck(true, """
                 Commit: 0123456
-                unknowns.de: 1 Ergebnis
-                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""");
+                unknowns.de: ✅
+                brettspiel-angebote.de: ✅""");
 
         new StartupSystemCheck(
                 List.of(scraper),
@@ -49,14 +49,14 @@ class StartupSystemCheckTest {
 
         verify(notifier).sendSystemCheck(true, """
                 Commit: 0123456
-                unknowns.de: 1 Ergebnis
-                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""");
+                unknowns.de: ✅
+                brettspiel-angebote.de: ✅""");
         assertThat(dryRunContext.active()).isFalse();
         verify(activityLog).recordApplicationStarted("""
                 Systemcheck erfolgreich
                 Commit: 0123456
-                unknowns.de: 1 Ergebnis
-                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""", true);
+                unknowns.de: ✅
+                brettspiel-angebote.de: ✅""", true);
     }
 
     @Test
@@ -100,10 +100,10 @@ class StartupSystemCheckTest {
         verify(notifier).sendSystemCheck(eq(false), message.capture());
         assertThat(message.getValue()).isEqualTo("""
                 Commit: 0123456
-                Spiele-Offensive: 1 Ergebnis
+                Spiele-Offensive: ✅
                 Milan-Spiele: FEHLER – keine Ergebnisse
                 BGG Market: FEHLER – Antwort ungültig
-                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""");
+                brettspiel-angebote.de: ✅""");
     }
 
     @Test
@@ -124,7 +124,7 @@ class StartupSystemCheckTest {
 
         verify(notifier).sendSystemCheck(false, """
                 Commit: 0123456
-                Milan-Spiele: 1 Ergebnis
+                Milan-Spiele: ✅
                 brettspiel-angebote.de: FEHLER – keine Preisdaten für „Scythe“""");
     }
 
@@ -145,7 +145,7 @@ class StartupSystemCheckTest {
         verify(notifier).sendSystemCheck(false, """
                 Commit: 0123456
                 Keine Quellen aktiviert
-                brettspiel-angebote.de: Preisdaten für „Scythe“ gefunden""");
+                brettspiel-angebote.de: ✅""");
     }
 
     private OfferScraper scraper(OfferSource source) {

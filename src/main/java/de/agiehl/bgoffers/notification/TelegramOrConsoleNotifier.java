@@ -6,6 +6,7 @@ import de.agiehl.bgoffers.domain.OfferSource;
 import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.domain.WeeklyReport;
 import de.agiehl.bgoffers.service.ActivityLogService;
+import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -230,7 +231,7 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 .reduce((left, right) -> left + "&" + right)
                 .orElse("");
         return send(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8),
-                "application/x-www-form-urlencoded; charset=UTF-8");
+                "application/x-www-form-urlencoded; charset=UTF-8", messageDetail(fields));
     }
 
     private boolean sendPhoto(Offer offer, List<Field> fields) {
@@ -249,7 +250,9 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
             parts.add(HttpRequest.BodyPublishers.ofByteArray(photo));
             parts.add(HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8));
             return send("sendPhoto", HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new)),
-                    "multipart/form-data; boundary=" + boundary);
+                    "multipart/form-data; boundary=" + boundary,
+                    "Bildnachricht\n" + (offer.getType() == OfferType.SPIELESCHMIEDE
+                            ? plainText(offer) : messageDetail(fields)));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             LOGGER.error("Telegram-Bildverarbeitung wurde unterbrochen");
@@ -262,7 +265,18 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
         }
     }
 
-    private boolean send(String method, HttpRequest.BodyPublisher body, String contentType) {
+    private String messageDetail(List<Field> fields) {
+        var message = fields.stream()
+                .filter(field -> field.name().equals("text") || field.name().equals("caption"))
+                .map(Field::value)
+                .findFirst()
+                .orElseThrow();
+        var document = Jsoup.parseBodyFragment(message);
+        document.select("a[href]").forEach(link -> link.appendText(" (" + link.attr("href") + ")"));
+        return document.body().wholeText();
+    }
+
+    private boolean send(String method, HttpRequest.BodyPublisher body, String contentType, String detail) {
         try {
             var endpoint = URI.create("https://api.telegram.org/bot" + properties.telegram().botToken() + "/" + method);
             var request = HttpRequest.newBuilder(endpoint)
@@ -278,7 +292,7 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 LOGGER.error("Telegram-Aufruf {} ist mit HTTP {} fehlgeschlagen", method, response.statusCode());
                 recordFailure("%s: HTTP %d – %s".formatted(method, response.statusCode(), response.body()));
             } else {
-                activityLogService.recordTelegramDelivery(true);
+                activityLogService.recordTelegramDelivery(true, shorten(detail, 10000));
             }
             return successful;
         } catch (InterruptedException exception) {

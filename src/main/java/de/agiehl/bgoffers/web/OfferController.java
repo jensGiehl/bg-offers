@@ -32,6 +32,12 @@ public class OfferController {
     private static final DateTimeFormatter BUILD_TIME_FORMAT = DateTimeFormatter
             .ofPattern("dd.MM.yyyy HH:mm:ss z", Locale.GERMAN)
             .withZone(ZoneId.of("Europe/Berlin"));
+    private static final DateTimeFormatter ACTIVITY_TIME_FORMAT = DateTimeFormatter
+            .ofPattern("dd.MM.yyyy · HH:mm", Locale.GERMAN)
+            .withZone(ZoneId.of("Europe/Berlin"));
+    private static final DateTimeFormatter OFFER_TIME_FORMAT = DateTimeFormatter
+            .ofPattern("dd.MM.yyyy HH:mm", Locale.GERMAN)
+            .withZone(ZoneId.of("Europe/Berlin"));
 
     private final OfferRepository repository;
     private final ActivityLogRepository activityLogRepository;
@@ -61,6 +67,7 @@ public class OfferController {
         var retries = activityLogRepository.countByType(ActivityType.HTTP_RETRY)
                 + activityLogRepository.countByType(ActivityType.LOOKUP_RETRY);
         model.addAttribute("activities", activities);
+        model.addAttribute("activityTimeFormat", ACTIVITY_TIME_FORMAT);
         model.addAttribute("total", activityLogRepository.count());
         model.addAttribute("offerEvents",
                 activityLogRepository.countByType(ActivityType.OFFER_FOUND)
@@ -114,6 +121,7 @@ public class OfferController {
         var offer = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         model.addAttribute("offer", offer);
+        model.addAttribute("offerTimeFormat", OFFER_TIME_FORMAT);
         model.addAttribute("lookupTimeFormat", BUILD_TIME_FORMAT);
         return "offer";
     }
