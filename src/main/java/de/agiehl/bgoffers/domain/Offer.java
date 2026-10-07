@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(
@@ -41,6 +42,7 @@ import java.util.List;
 public class Offer {
 
     public static final int MAXIMUM_LOOKUP_ATTEMPTS = 3;
+    public static final int MAXIMUM_IMAGE_FAILURES = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,6 +70,9 @@ public class Offer {
 
     @Column(length = 2000)
     private String imageUrl;
+
+    @Column(nullable = false)
+    private int notificationImageFailures;
 
     @Column(precision = 12, scale = 2)
     private BigDecimal price;
@@ -192,7 +197,28 @@ public class Offer {
     }
 
     public void setImageUrl(String imageUrl) {
+        if (!Objects.equals(this.imageUrl, imageUrl)) {
+            resetNotificationImageFailures();
+        }
         this.imageUrl = imageUrl;
+    }
+
+    public int getNotificationImageFailures() {
+        return notificationImageFailures;
+    }
+
+    public boolean isNotificationImageExhausted() {
+        return notificationImageFailures >= MAXIMUM_IMAGE_FAILURES;
+    }
+
+    public void recordNotificationImageFailure() {
+        if (!isNotificationImageExhausted()) {
+            notificationImageFailures++;
+        }
+    }
+
+    public void resetNotificationImageFailures() {
+        notificationImageFailures = 0;
     }
 
     public BigDecimal getPrice() {

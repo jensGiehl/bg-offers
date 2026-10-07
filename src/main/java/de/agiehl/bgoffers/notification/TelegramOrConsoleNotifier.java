@@ -58,16 +58,21 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
             return true;
         }
         var message = htmlText(offer);
-        if (present(offer.getImageUrl()) || offer.getSource() == OfferSource.UNKNOWNS) {
+        if (!offer.isNotificationImageExhausted()
+                && (present(offer.getImageUrl()) || offer.getSource() == OfferSource.UNKNOWNS)) {
             var fields = fields("chat_id", properties.telegram().chatId());
             if (offer.getType() != OfferType.SPIELESCHMIEDE) {
                 fields.addAll(fields("caption", message, "parse_mode", "HTML"));
             }
             return sendPhoto(offer, fields);
         }
+        return sendTextOffer(offer);
+    }
+
+    private boolean sendTextOffer(Offer offer) {
         return send("sendMessage", fields(
                 "chat_id", properties.telegram().chatId(),
-                "text", message,
+                "text", htmlText(offer),
                 "parse_mode", "HTML",
                 "disable_web_page_preview", "true"), offer);
     }
@@ -239,34 +244,41 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
     }
 
     private boolean sendPhoto(Offer offer, List<Field> fields) {
+        byte[] photo;
         try {
-            var photo = offerImage.render(offer);
-            var boundary = "bg-offers-" + UUID.randomUUID();
-            var parts = new ArrayList<HttpRequest.BodyPublisher>();
-            for (var field : fields) {
-                parts.add(HttpRequest.BodyPublishers.ofString(
-                        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field.name()
-                                + "\"\r\n\r\n" + field.value() + "\r\n", StandardCharsets.UTF_8));
-            }
-            parts.add(HttpRequest.BodyPublishers.ofString(
-                    "--" + boundary + "\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"offer.png\""
-                            + "\r\nContent-Type: image/png\r\n\r\n", StandardCharsets.UTF_8));
-            parts.add(HttpRequest.BodyPublishers.ofByteArray(photo));
-            parts.add(HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8));
-            return send("sendPhoto", HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new)),
-                    "multipart/form-data; boundary=" + boundary,
-                    "Bildnachricht\n" + (offer.getType() == OfferType.SPIELESCHMIEDE
-                            ? plainText(offer) : messageDetail(fields)), offer);
+            photo = offerImage.render(offer);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             LOGGER.error("Telegram-Bildverarbeitung wurde unterbrochen");
             recordFailure(offer, "Bildverarbeitung wurde unterbrochen");
             return false;
         } catch (IOException | RuntimeException exception) {
-            LOGGER.error("Telegram-Bildverarbeitung ist fehlgeschlagen: {}", exception.getMessage());
-            recordFailure(offer, "Bildverarbeitung: " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
-            return false;
+            offer.recordNotificationImageFailure();
+            LOGGER.error("Telegram-Bildverarbeitung ist fehlgeschlagen (Versuch {}/{}): {}",
+                    offer.getNotificationImageFailures(), Offer.MAXIMUM_IMAGE_FAILURES, exception.getMessage());
+            recordFailure(offer, "Bildverarbeitung: " + exception.getClass().getSimpleName() + ": "
+                    + exception.getMessage() + " (Versuch " + offer.getNotificationImageFailures() + "/"
+                    + Offer.MAXIMUM_IMAGE_FAILURES + ")"
+                    + (offer.isNotificationImageExhausted() ? "; Versand erfolgt ohne Bild." : ""));
+            return offer.isNotificationImageExhausted() && sendTextOffer(offer);
         }
+        offer.resetNotificationImageFailures();
+        var boundary = "bg-offers-" + UUID.randomUUID();
+        var parts = new ArrayList<HttpRequest.BodyPublisher>();
+        for (var field : fields) {
+            parts.add(HttpRequest.BodyPublishers.ofString(
+                    "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field.name()
+                            + "\"\r\n\r\n" + field.value() + "\r\n", StandardCharsets.UTF_8));
+        }
+        parts.add(HttpRequest.BodyPublishers.ofString(
+                "--" + boundary + "\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"offer.png\""
+                        + "\r\nContent-Type: image/png\r\n\r\n", StandardCharsets.UTF_8));
+        parts.add(HttpRequest.BodyPublishers.ofByteArray(photo));
+        parts.add(HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8));
+        return send("sendPhoto", HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new)),
+                "multipart/form-data; boundary=" + boundary,
+                "Bildnachricht\n" + (offer.getType() == OfferType.SPIELESCHMIEDE
+                        ? plainText(offer) : messageDetail(fields)), offer);
     }
 
     private String messageDetail(List<Field> fields) {
@@ -296,6 +308,9 @@ public class TelegramOrConsoleNotifier implements OfferNotifier {
                 LOGGER.error("Telegram-Aufruf {} ist mit HTTP {} fehlgeschlagen", method, response.statusCode());
                 recordFailure(offer, "%s: HTTP %d – %s".formatted(method, response.statusCode(), response.body()));
             } else {
+                if (offer != null) {
+                    offer.setNotificationError(null);
+                }
                 recordDelivery(offer, true, shorten(detail, 10000));
             }
             return successful;

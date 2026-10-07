@@ -170,7 +170,7 @@ Normale Meldungen enthalten kompakt Name, Angebotspreis, Verfügbarkeit, verfüg
 
 unknowns.de-Beiträge verwenden das [Forumslogo](https://unknowns.de/images/style-10/pageLogo-5cc3ef36.svg) als Foto mit Titel und Beitragslink in der Beschriftung. Das Logo wird mit [Apache Batik](https://xmlgraphics.apache.org/batik/) von SVG nach PNG umgewandelt; das gilt auch für bereits gespeicherte Beiträge ohne Bild. Das Unknowns-Logo erhält den blauen Hintergrund der Website, damit die weiße Schrift sichtbar bleibt. Leere Inkscape-Fließtexte werden vor der SVG-Umwandlung entfernt. Transparente Bereiche der übrigen Angebotsbilder werden weiß hinterlegt. Große Bilder werden unter Beibehaltung des Seitenverhältnisses auf höchstens 1200 Pixel je Seite verkleinert; bei kleinen Bildern wird die Bildfläche für einen lesbaren Badge erweitert. Die Bildverarbeitung läuft im Arbeitsspeicher und benötigt keinen zusätzlichen Docker-Mount. Das Docker-Image enthält die dafür benötigten Schriftarten.
 
-Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche, einschließlich fehlgeschlagener Bildabrufe oder Bildverarbeitung, werden deshalb beim nächsten relevanten Lauf erneut versucht. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung; Bilder werden dabei nicht heruntergeladen oder verarbeitet.
+Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche werden beim nächsten relevanten Lauf erneut versucht. Bildabruf und Bildverarbeitung werden pro Angebot auf höchstens drei aufeinanderfolgende Fehlversuche begrenzt, beispielsweise bei „Nicht unterstütztes Angebotsbild“. Beim dritten Bildfehler wird das Angebot direkt als Text mit Name und Angebotslink versendet. Das gilt auch für Spieleschmiede-Banner und unknowns.de-Beiträge. Der Fehlerzähler wird in der Datenbank gespeichert und bleibt bei Neustarts erhalten. Scheitert auch der Textversand, verwenden weitere Versandversuche ausschließlich Text. Ein erfolgreich verarbeitetes Bild oder eine geänderte Bild-URL setzt den Zähler zurück; erneute Abrufe derselben URL und Preisänderungen setzen ihn nicht zurück. Frühere Bildfehler bleiben im Activity Log sichtbar. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung; Bilder werden dabei nicht heruntergeladen oder verarbeitet.
 
 Direkt beim Start führt die Anwendung einen rein lesenden Systemcheck aus. Dafür ruft sie jeden aktivierten Scraper einmal vollständig auf und prüft, ob mindestens ein Ergebnis geliefert wird. Zusätzlich führt sie die Suche nach „Scythe“ über den Preisservice aus und erwartet verfügbare Preisdaten. Die dabei gefundenen Angebote und Prüfergebnisse werden weder gespeichert noch angereichert oder als einzelne Angebote gemeldet. Nach Abschluss wird genau eine Statusmeldung mit einem Haken (✅) je erfolgreich geprüfter Quelle und für den erfolgreichen Preisvergleichstest, möglichen Fehlern und der siebenstelligen Commit-ID versendet. Ohne Telegram-Konfiguration erscheint dieselbe Meldung im Anwendungslog. Startbericht und Zustellung werden dauerhaft im Activity Log erfasst. Mit `STARTUP_SYSTEM_CHECK_ENABLED=false` entfallen die externen Prüfungen; der Start wird weiterhin mit Commit-ID und dem Hinweis „Systemcheck deaktiviert“ protokolliert und gemeldet.
 
@@ -335,6 +335,39 @@ docker compose up -d --no-build
 ```
 
 Bei abweichendem `BG_PRICES_SOURCE_DIR` den Pfad im zweiten Befehl entsprechend anpassen. Den Preisservice stets neu bauen, wenn dessen Checkout aktualisiert wurde. `docker compose pull` allein aktualisiert das lokal gebaute Preisservice-Image nicht. `docker compose down` beendet beide Container; die Datenverzeichnisse bleiben erhalten. Vor einem Backup mit `docker compose stop` beide Services anhalten und `data` sowie `price-data` sichern. Nach einem Host-Neustart starten beide Container durch `restart: unless-stopped` wieder, sofern Docker aktiviert ist. Die `depends_on`-Bereitschaftsprüfung gilt beim Compose-Start, nicht für die automatische Startreihenfolge des Docker-Daemons.
+
+### Preisservice manuell starten
+
+Alternativ zu Compose lässt sich der Preisservice aus dem BG-Offers-Verzeichnis mit dem zuvor gebauten lokalen Image starten. Die Datenverzeichnisse und Berechtigungen wie oben vorbereiten:
+
+```bash
+docker compose build --pull bg-prices
+docker rm -f bg-prices 2>/dev/null
+
+docker run -d \
+  --name bg-prices \
+  --pull=never \
+  --init \
+  --restart unless-stopped \
+  --network host \
+  --user 10001:10001 \
+  --shm-size=256m \
+  --memory=1536m \
+  --cpus=2 \
+  --stop-timeout=65 \
+  --security-opt "seccomp=${BG_PRICES_SOURCE_DIR:-../brettspielpreise}/docker/seccomp_profile.json" \
+  -e SERVER_PORT=8077 \
+  -e DB_PATH=/app/data/bg-prices \
+  -e PRICES_HEADLESS=true \
+  -e PRICES_SANDBOX=true \
+  -e PRICES_SOURCE_CHECK_ENABLED=false \
+  -e PRICES_SOURCE_CHECK_AT_STARTUP=false \
+  -e IPV6_PROXY_ENABLED=true \
+  --mount "type=bind,source=$(pwd)/price-data,target=/app/data" \
+  "${BG_PRICES_IMAGE:-bg-prices:local}"
+```
+
+Der IPv6-Proxy ist in diesem Beispiel aktiviert. Der Preisservice lauscht im Host-Netzwerk auf **8077 am Host**; `./price-data` enthält seine dauerhaft gespeicherte H2-Datenbank. `--pull=never` verwendet das lokal gebaute Image. Bei abweichenden Werten für `BG_PRICES_SOURCE_DIR` oder `BG_PRICES_IMAGE` diese auch als Shell-Variablen setzen, damit Build und Start dieselben Pfade und Image-Namen verwenden.
 
 ### Nur BG Offers manuell starten
 

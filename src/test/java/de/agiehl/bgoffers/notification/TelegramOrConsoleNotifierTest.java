@@ -8,6 +8,8 @@ import de.agiehl.bgoffers.domain.OfferType;
 import de.agiehl.bgoffers.domain.WeeklyReport;
 import de.agiehl.bgoffers.service.ActivityLogService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
 import java.io.ByteArrayOutputStream;
@@ -26,7 +28,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -242,6 +246,125 @@ class TelegramOrConsoleNotifierTest {
         verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(offer), org.mockito.ArgumentMatchers.eq(false), any(String.class));
         assertThat(offer.getNotificationError()).contains("Bildverarbeitung", "HTTP 503");
         verifyNoInteractions(client);
+    }
+
+    @ParameterizedTest
+    @EnumSource(OfferType.class)
+    void sendsTextOnThirdImageFailureForEveryOfferType(OfferType type) throws Exception {
+        var source = type == OfferType.FORUM_POST ? OfferSource.UNKNOWNS : OfferSource.SPIELE_OFFENSIVE;
+        var offer = Offer.create(source, type, "Grüße & Würfel", "https://shop.example/offer", Instant.now());
+        if (type != OfferType.FORUM_POST) {
+            offer.setImageUrl("https://shop.example/broken.png");
+        }
+        var renderer = mock(TelegramOfferImage.class);
+        when(renderer.render(offer)).thenThrow(new IOException("Nicht unterstütztes Angebotsbild"));
+        var activityLog = mock(ActivityLogService.class);
+        var client = telegramClient(200, "{\"ok\":true}");
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), activityLog, renderer, client);
+
+        assertThat(notifier.sendOffer(offer)).isFalse();
+        assertThat(notifier.sendOffer(offer)).isFalse();
+        verify(client, times(0)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        assertThat(notifier.sendOffer(offer)).isTrue();
+
+        verify(renderer, times(3)).render(offer);
+        assertThat(offer.getNotificationImageFailures()).isEqualTo(3);
+        assertThat(offer.getNotificationError()).isNull();
+        var request = sentRequest(client);
+        assertThat(request.uri().getPath()).endsWith("/sendMessage");
+        var body = java.net.URLDecoder.decode(new String(requestBody(request), StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        assertThat(body).contains("Grüße &amp; Würfel", offer.getSourceUrl(), "disable_web_page_preview=true")
+                .doesNotContain("photo", "caption", "broken.png");
+        verify(activityLog, times(3)).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(offer),
+                org.mockito.ArgumentMatchers.eq(false), any(String.class));
+        verify(activityLog).recordTelegramDelivery(org.mockito.ArgumentMatchers.eq(offer),
+                org.mockito.ArgumentMatchers.eq(true), any(String.class));
+    }
+
+    @Test
+    void retriesFailedTextDeliveryWithoutTryingTheImageAgain() throws Exception {
+        var offer = offer();
+        offer.setImageUrl("https://shop.example/broken.png");
+        var renderer = mock(TelegramOfferImage.class);
+        when(renderer.render(offer)).thenThrow(new IllegalArgumentException("Invalid image"));
+        var client = telegramClient(503, "{\"ok\":false}");
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+
+        for (var attempt = 0; attempt < 3; attempt++) {
+            assertThat(notifier.sendOffer(offer)).isFalse();
+        }
+        assertThat(offer.getNotificationError()).contains("sendMessage", "HTTP 503");
+        var restarted = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+        assertThat(restarted.sendOffer(offer)).isFalse();
+
+        verify(renderer, times(3)).render(offer);
+        var requests = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client, times(2)).send(requests.capture(), any(HttpResponse.BodyHandler.class));
+        assertThat(requests.getAllValues()).allSatisfy(request ->
+                assertThat(request.uri().getPath()).endsWith("/sendMessage"));
+        assertThat(offer.getNotificationImageFailures()).isEqualTo(3);
+    }
+
+    @Test
+    void clearsImageFailuresAfterSuccessfulPreparation() throws Exception {
+        var offer = offer();
+        offer.setImageUrl("https://shop.example/image.png");
+        var renderer = mock(TelegramOfferImage.class);
+        when(renderer.render(offer)).thenThrow(new IOException("HTTP 503"))
+                .thenReturn(new byte[]{1, 2, 3});
+        var client = telegramClient(200, "{\"ok\":true}");
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+
+        assertThat(notifier.sendOffer(offer)).isFalse();
+        assertThat(offer.getNotificationImageFailures()).isEqualTo(1);
+        assertThat(notifier.sendOffer(offer)).isTrue();
+
+        assertThat(offer.getNotificationImageFailures()).isZero();
+        assertThat(offer.getNotificationError()).isNull();
+        assertThat(sentRequest(client).uri().getPath()).endsWith("/sendPhoto");
+    }
+
+    @Test
+    void onlyResetsImageFailuresWhenTheImageUrlChanges() throws Exception {
+        var offer = offer();
+        offer.setImageUrl("https://shop.example/broken.png");
+        var renderer = mock(TelegramOfferImage.class);
+        when(renderer.render(offer)).thenThrow(new IOException("HTTP 503"));
+        var client = telegramClient(200, "{\"ok\":true}");
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+        for (var attempt = 0; attempt < 3; attempt++) {
+            notifier.sendOffer(offer);
+        }
+
+        offer.setImageUrl(offer.getImageUrl());
+        offer.setPrice(new BigDecimal("9.99"));
+        assertThat(offer.isNotificationImageExhausted()).isTrue();
+        offer.setImageUrl("https://shop.example/fixed.png");
+        assertThat(offer.getNotificationImageFailures()).isZero();
+        doReturn(new byte[]{1, 2, 3}).when(renderer).render(offer);
+
+        assertThat(notifier.sendOffer(offer)).isTrue();
+        var requests = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client, times(2)).send(requests.capture(), any(HttpResponse.BodyHandler.class));
+        assertThat(requests.getAllValues().getLast().uri().getPath()).endsWith("/sendPhoto");
+    }
+
+    @Test
+    void preservesInterruptionWithoutCountingAnImageFailureOrSendingText() throws Exception {
+        var offer = offer();
+        offer.setImageUrl("https://shop.example/image.png");
+        var renderer = mock(TelegramOfferImage.class);
+        when(renderer.render(offer)).thenThrow(new InterruptedException());
+        var client = mock(HttpClient.class);
+        var notifier = new TelegramOrConsoleNotifier(telegramProperties(), mock(ActivityLogService.class), renderer, client);
+        try {
+            assertThat(notifier.sendOffer(offer)).isFalse();
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            assertThat(offer.getNotificationImageFailures()).isZero();
+            verifyNoInteractions(client);
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test

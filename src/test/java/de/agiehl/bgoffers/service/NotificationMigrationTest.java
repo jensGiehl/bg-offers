@@ -34,6 +34,7 @@ class NotificationMigrationTest {
             try (var result = statement.executeQuery("SELECT * FROM offers")) {
                 assertThat(result.next()).isTrue();
                 assertThat(result.getString("notification_status")).isEqualTo("UNKNOWN");
+                assertThat(result.getInt("notification_image_failures")).isZero();
                 assertThat(result.getString("notification_reason")).isNull();
                 assertThat(result.getString("notification_fingerprint")).isEqualTo("sent-price");
                 assertThat(result.getObject("notified_at")).isNotNull();
