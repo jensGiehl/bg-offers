@@ -8,21 +8,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.time.Duration;
+import java.net.URI;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @EnabledIfEnvironmentVariable(named = "RUN_LIVE_PRICE_COMPARISON_TEST", matches = "(?i)true")
 class PriceComparisonLiveTest {
 
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36";
-
     @Test
-    void findsCurrentScythePriceOnBrettspielAngebote() {
+    void findsScythePriceThroughThePriceService() {
         var properties = liveProperties();
         var service = new PriceComparisonService(
-                new PriceComparisonDocumentClient(properties),
-                properties,
+                new PriceComparisonHttpClient(properties, Duration.ofSeconds(60)),
                 new GameNameNormalizer());
 
         var result = service.lookup("Scythe", 169786);
@@ -34,11 +31,15 @@ class PriceComparisonLiveTest {
 
     private OfferProperties liveProperties() {
         var defaults = TestProperties.create();
+        var sources = defaults.sources();
         return new OfferProperties(
-                defaults.sources(),
+                new OfferProperties.Sources(sources.spieleOffensive(), sources.milan(), sources.unknowns(),
+                        sources.unknownsLogin(), sources.unknownsUsername(), sources.unknownsPassword(),
+                        sources.bggMarket(), URI.create(System.getenv().getOrDefault(
+                                "PRICE_COMPARISON_URL", "http://localhost:8077"))),
                 new OfferProperties.Http(
                         Duration.ofSeconds(30),
-                        USER_AGENT,
+                        defaults.http().userAgent(),
                         1,
                         Duration.ZERO,
                         Duration.ZERO,

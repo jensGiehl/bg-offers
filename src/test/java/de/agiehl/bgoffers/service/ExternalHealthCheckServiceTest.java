@@ -3,7 +3,6 @@ package de.agiehl.bgoffers.service;
 import de.agiehl.bgoffers.domain.ExternalHealthCheck;
 import de.agiehl.bgoffers.domain.ExternalHealthCheckStatus;
 import de.agiehl.bgoffers.enrichment.BggLookupService;
-import de.agiehl.bgoffers.pricecomparison.PriceComparisonService;
 import de.agiehl.bgoffers.notification.OfferNotifier;
 import de.agiehl.bgoffers.repository.ExternalHealthCheckStatusRepository;
 import org.junit.jupiter.api.Test;
@@ -25,14 +24,12 @@ class ExternalHealthCheckServiceTest {
 
     @Test
     void sendsOneRecoveryAfterAFailureAndWaitsForAnotherFailureBeforeSendingAnother() {
-        var priceComparison = mock(PriceComparisonService.class);
         var bgg = mock(BggLookupService.class);
         var repository = repository();
         var notifier = mock(OfferNotifier.class);
-        when(priceComparison.healthCheck()).thenReturn(false, true, true, false, true);
-        when(bgg.healthCheck()).thenReturn(true);
+        when(bgg.healthCheck()).thenReturn(false, true, true, false, true);
         when(notifier.sendHealthRecovery(any())).thenReturn(true);
-        var service = new ExternalHealthCheckService(priceComparison, bgg, repository, notifier);
+        var service = new ExternalHealthCheckService(bgg, repository, notifier);
 
         service.verify();
         service.verify();
@@ -40,48 +37,44 @@ class ExternalHealthCheckServiceTest {
         service.verify();
         service.verify();
 
-        verify(notifier, times(2)).sendHealthAlert(contains("brettspiel-angebote.de"));
-        verify(notifier, times(2)).sendHealthRecovery(contains("brettspiel-angebote.de"));
-        verify(notifier, never()).sendHealthAlert(contains("BoardGameGeek"));
-        verify(notifier, never()).sendHealthRecovery(contains("BoardGameGeek"));
+        verify(notifier, times(2)).sendHealthAlert(contains("BoardGameGeek"));
+        verify(notifier, times(2)).sendHealthRecovery(contains("BoardGameGeek"));
+        verify(notifier, never()).sendHealthAlert(contains("brettspiel-angebote.de"));
+        verify(notifier, never()).sendHealthRecovery(contains("brettspiel-angebote.de"));
+        verify(repository, never()).findById(ExternalHealthCheck.PRICE_COMPARISON);
     }
 
     @Test
     void retriesARecoveryNotificationUntilItWasDelivered() {
-        var priceComparison = mock(PriceComparisonService.class);
         var bgg = mock(BggLookupService.class);
         var repository = repository();
         var notifier = mock(OfferNotifier.class);
-        when(priceComparison.healthCheck()).thenReturn(false, true, true, true);
-        when(bgg.healthCheck()).thenReturn(true);
+        when(bgg.healthCheck()).thenReturn(false, true, true, true);
         when(notifier.sendHealthRecovery(any())).thenReturn(false, true);
-        var service = new ExternalHealthCheckService(priceComparison, bgg, repository, notifier);
+        var service = new ExternalHealthCheckService(bgg, repository, notifier);
 
         service.verify();
         service.verify();
         service.verify();
         service.verify();
 
-        verify(notifier, times(2)).sendHealthRecovery(contains("brettspiel-angebote.de"));
+        verify(notifier, times(2)).sendHealthRecovery(contains("BoardGameGeek"));
     }
 
     @Test
-    void reportsBothFailuresWithTheirTestDetails() {
-        var priceComparison = mock(PriceComparisonService.class);
+    void reportsOnlyTheBggFailureWithItsTestDetails() {
         var bgg = mock(BggLookupService.class);
         var repository = repository();
         var notifier = mock(OfferNotifier.class);
         var messages = ArgumentCaptor.forClass(String.class);
-        when(priceComparison.healthCheck()).thenReturn(false);
         when(bgg.healthCheck()).thenReturn(false);
-        var service = new ExternalHealthCheckService(priceComparison, bgg, repository, notifier);
+        var service = new ExternalHealthCheckService(bgg, repository, notifier);
 
         service.verify();
 
-        verify(notifier, times(2)).sendHealthAlert(messages.capture());
+        verify(notifier).sendHealthAlert(messages.capture());
         assertThat(messages.getAllValues())
-                .anyMatch(message -> message.contains("Scythe") && message.contains("brettspiel-angebote.de"))
-                .anyMatch(message -> message.contains("Magical Athlete") && message.contains("BoardGameGeek"));
+                .singleElement().asString().contains("Magical Athlete", "BoardGameGeek");
     }
 
     private ExternalHealthCheckStatusRepository repository() {

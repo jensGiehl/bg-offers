@@ -1,138 +1,147 @@
 package de.agiehl.bgoffers.pricecomparison;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import de.agiehl.bgoffers.config.OfferProperties;
-import org.apache.hc.client5.http.config.ConnectionConfig;
-import org.apache.hc.client5.http.cookie.BasicCookieStore;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.core5.util.Timeout;
+import de.agiehl.bgoffers.domain.LookupStatus;
+import de.agiehl.bgoffers.scraper.SourceAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.stream.Collectors;
+import java.time.Duration;
 
-final class PriceComparisonHttpClient {
+@Component
+public final class PriceComparisonHttpClient implements PriceComparisonClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PriceComparisonHttpClient.class);
-    private static final String ACCEPT_LANGUAGE = "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7";
 
-    private final BasicCookieStore cookieStore;
+    private final OfferProperties properties;
     private final RestClient restClient;
-    private final String userAgent;
 
-    PriceComparisonHttpClient(OfferProperties properties) {
-        userAgent = properties.http().userAgent();
-        cookieStore = new BasicCookieStore();
-        restClient = createClient(properties);
-    }
-
-    Response get(
-            URI uri,
-            String accept,
-            URI referer) {
-        var headers = requestHeaders(accept, referer);
-        LOGGER.debug(
-                "Brettspiel-Angebote HTTP-Request: Methode=GET, URI={}, Protokoll={}, Header={}, Cookies={}",
-                uri, "HTTP/1.1", headersForLogging(headers), cookiesForLogging(uri));
-        var response = restClient
-                .get()
-                .uri(uri)
-                .headers(requestHeaders -> requestHeaders.putAll(headers))
-                .exchange((request, clientResponse) -> new Response(
-                        clientResponse.getStatusCode().value(),
-                        request.getURI(),
-                        clientResponse.getHeaders().getLocation(),
-                        clientResponse.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),
-                        clientResponse.getHeaders().getFirst(HttpHeaders.SERVER),
-                        headersForLogging(clientResponse.getHeaders()),
-                        clientResponse.getBody().readAllBytes()));
-        LOGGER.debug(
-                "Brettspiel-Angebote HTTP-Response: URI={}, HTTP={}, Header={}, Bytes={}, Cookies={}",
-                response.uri(), response.statusCode(), response.headers(),
-                response.body().length, cookiesForLogging(uri));
-        return response;
-    }
-
-    String cookiesForLogging(URI uri) {
-        var cookies = cookieStore.getCookies();
-        if (cookies.isEmpty()) {
-            return "<keine>";
-        }
-        return cookies.stream()
-                .map(cookie -> "%s=%s".formatted(cookie.getName(), cookie.getValue()))
-                .collect(Collectors.joining("; "));
-    }
-
-    void reset() {
-        cookieStore.clear();
-    }
-
-    private RestClient createClient(OfferProperties properties) {
-        var timeout = Timeout.ofMilliseconds(properties.http().timeout().toMillis());
-        var connectionConfig = ConnectionConfig.custom()
-                .setConnectTimeout(timeout)
-                .setSocketTimeout(timeout)
+    public PriceComparisonHttpClient(
+            OfferProperties properties,
+            @Value("${offers.http.price-comparison-timeout:60s}") Duration timeout) {
+        this.properties = properties;
+        var httpClient = HttpClient.newBuilder()
+                .connectTimeout(properties.http().timeout())
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
-        var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
-                .setDnsResolver(new Ipv6FirstDnsResolver())
-                .setDefaultConnectionConfig(connectionConfig)
-                .build();
-        var httpClient = HttpClients.custom()
-                .setConnectionManager(connectionManager)
-                .setDefaultCookieStore(cookieStore)
-                .disableRedirectHandling()
-                .build();
-        var requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        requestFactory.setConnectionRequestTimeout(properties.http().timeout());
-        requestFactory.setReadTimeout(properties.http().timeout());
-        return RestClient.builder()
+        var requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(timeout);
+        restClient = RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
     }
 
-    private HttpHeaders requestHeaders(String accept, URI referer) {
-        var requestHeaders = new HttpHeaders();
-        requestHeaders.set(HttpHeaders.USER_AGENT, userAgent);
-        requestHeaders.set(HttpHeaders.ACCEPT_LANGUAGE, ACCEPT_LANGUAGE);
-        requestHeaders.set(HttpHeaders.ACCEPT, accept);
-        requestHeaders.set("Sec-Fetch-Dest", "document");
-        requestHeaders.set("Sec-Fetch-Mode", "navigate");
-        requestHeaders.set("Sec-Fetch-Site", referer == null ? "none" : "same-origin");
-        requestHeaders.set("Sec-Fetch-User", "?1");
-        requestHeaders.set("Upgrade-Insecure-Requests", "1");
-        requestHeaders.set("Priority", "u=0, i");
-        if (referer != null) {
-            requestHeaders.set(HttpHeaders.REFERER, referer.toString());
+    @Override
+    public PriceComparisonResult lookup(String name, Integer bggId) {
+        var baseUrl = properties.sources().priceComparison().toString().replaceAll("/+$", "");
+        var query = "name=" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        if (bggId != null) {
+            query += "&bggId=" + bggId;
         }
-        return requestHeaders;
+        var uri = URI.create(baseUrl + "/api/v1/prices?" + query);
+        var attempts = Math.max(1, properties.http().maxAttempts());
+        RestClientException lastException = null;
+        for (var attempt = 1; attempt <= attempts; attempt++) {
+            LOGGER.debug("Preisservice-Abruf: Versuch={}/{}, URI={}", attempt, attempts, uri);
+            try {
+                var response = restClient.get()
+                        .uri(uri)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .exchange((request, clientResponse) -> new Response(
+                                clientResponse.getStatusCode().value(),
+                                clientResponse.getStatusCode().is2xxSuccessful()
+                                        ? clientResponse.bodyTo(PriceResponse.class) : null));
+                LOGGER.debug("Preisservice-Antwort: URI={}, HTTP={}", uri, response.statusCode());
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    return priceResult(response.body(), bggId);
+                }
+                if (!isRetryable(response.statusCode()) || attempt == attempts) {
+                    throw new SourceAccessException("Preisservice unter %s lieferte HTTP %d"
+                            .formatted(uri, response.statusCode()));
+                }
+                LOGGER.warn("Preisservice unter {} lieferte HTTP {}, neuer Versuch {}/{}",
+                        uri, response.statusCode(), attempt + 1, attempts);
+            } catch (RestClientException exception) {
+                lastException = exception;
+                LOGGER.warn("Preisservice-Abruf von {} ist fehlgeschlagen: {}", uri, exception.getMessage());
+                if (attempt == attempts) {
+                    break;
+                }
+            }
+            waitBeforeRetry(uri);
+        }
+        throw new SourceAccessException("Preisservice-Abruf von %s ist fehlgeschlagen".formatted(uri), lastException);
     }
 
-    private Map<String, List<String>> headersForLogging(HttpHeaders headers) {
-        var sortedHeaders = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
-        headers.forEach((name, values) -> sortedHeaders.put(name, List.copyOf(values)));
-        return new LinkedHashMap<>(sortedHeaders);
+    private PriceComparisonResult priceResult(PriceResponse response, Integer bggId) {
+        if (response == null || response.status() == null) {
+            throw new SourceAccessException("Preisservice lieferte keine gültige Antwort");
+        }
+        return switch (response.status()) {
+            case FOUND -> {
+                if (!"EUR".equals(response.currency())
+                        || isNegative(response.availablePrice()) || isNegative(response.bestPrice())
+                        || response.availablePrice() == null && response.bestPrice() == null
+                        || bggId != null && !Long.valueOf(bggId).equals(response.matchedBggId())) {
+                    throw new SourceAccessException("Preisservice lieferte ungültige Preise oder eine abweichende BGG-ID");
+                }
+                yield new PriceComparisonResult(LookupStatus.FOUND, response.url(),
+                        response.availablePrice(), response.bestPrice());
+            }
+            case NOT_FOUND -> PriceComparisonResult.withStatus(LookupStatus.NOT_FOUND);
+            case SKIPPED -> PriceComparisonResult.withStatus(LookupStatus.SKIPPED);
+            case ERROR -> {
+                LOGGER.warn("Preisservice meldet einen Fehler: {}", response.errorCode());
+                yield PriceComparisonResult.withStatus(LookupStatus.ERROR);
+            }
+        };
     }
 
-    record Response(
-            int statusCode,
-            URI uri,
-            URI location,
-            String contentType,
-            String server,
-            Map<String, List<String>> headers,
-            byte[] body) {
+    private boolean isNegative(BigDecimal price) {
+        return price != null && price.signum() < 0;
+    }
 
-        String bodyAsString() {
-            return new String(body, StandardCharsets.UTF_8);
+    private boolean isRetryable(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private void waitBeforeRetry(URI uri) {
+        try {
+            Thread.sleep(properties.http().retryDelay());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new SourceAccessException(
+                    "Warten auf erneuten Preisservice-Abruf von %s wurde unterbrochen".formatted(uri), exception);
         }
+    }
+
+    private record Response(int statusCode, PriceResponse body) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record PriceResponse(
+            Status status,
+            Long matchedBggId,
+            String url,
+            String currency,
+            BigDecimal availablePrice,
+            BigDecimal bestPrice,
+            String errorCode) {
+    }
+
+    private enum Status {
+        FOUND, NOT_FOUND, ERROR, SKIPPED
     }
 }

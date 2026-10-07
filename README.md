@@ -2,6 +2,8 @@
 
 BG Offers sammelt Brettspielangebote von Spiele-Offensive, Milan-Spiele und dem BGG Market sowie neue Themen aus dem Schnäppchenforum von unknowns.de. Shop- und Market-Angebote werden mit BoardGameGeek- und Vergleichspreisdaten angereichert; unknowns.de-Themen werden mit Titel, Link und dem Forumslogo gespeichert und gemeldet. Ein dauerhaftes Activity Log macht diese Abläufe auch in der Web-Oberfläche nachvollziehbar. Ohne Telegram-Konfiguration werden dieselben Meldungen im Anwendungslog ausgegeben.
 
+Die Vergleichspreise kommen vom separaten Projekt [brettspielpreise](https://github.com/jensGiehl/brettspielpreise). Die mitgelieferte Docker-Compose-Konfiguration startet beide Services gemeinsam; die Einrichtung auf dem Raspberry Pi steht im Abschnitt [Docker](#docker).
+
 Die Anwendung verwendet Java 27, Spring Boot, Maven, H2 mit Flyway, Jsoup, Thymeleaf und Bootstrap als WebJar. Die Web-Oberfläche ist ausschließlich lesend und unter `http://localhost:8080` erreichbar.
 
 Im Footer der Angebotsübersicht stehen die Version als siebenstellige Git-Commit-ID (vollständig im Tooltip) und der Build-Zeitpunkt mit Datum, Uhrzeit und Berliner Zeitzone. Maven schreibt den tatsächlichen Build-Startzeitpunkt über `maven.build.timestamp` in das JAR, unabhängig vom festen Archiv-Zeitstempel für reproduzierbare Builds; er bleibt bei Neustarts unverändert. Alle Uhrzeiten in Aktivitäten, Angebotsdetails und Rechercheverläufen werden in `Europe/Berlin` dargestellt, mit automatischer Umstellung zwischen Sommer- und Winterzeit und unabhängig von der Zeitzone des Hosts oder Containers. Der Docker-Workflow setzt die Commit-ID automatisch. Bei einem lokalen Start `GIT_COMMIT` auf das Ergebnis von `git rev-parse HEAD` setzen. Fehlt die Commit-ID oder bei einem IDE-Start die Build-Information, erscheint für den jeweiligen Wert „unbekannt“.
@@ -18,7 +20,6 @@ Die Abhängigkeiten wurden am 6. Oktober 2026 auf verfügbare stabile Versionen 
 | Bootstrap / Bootstrap Icons (WebJars) | 5.3.8 / 1.13.1 |
 | Thymeleaf / Java-Time-Erweiterung | 3.1.5.RELEASE / 3.0.4.RELEASE |
 | H2 / Hibernate ORM / HikariCP / Flyway | 2.5.252 / 7.4.12.Final / 7.1.0 / 13.9.0 |
-| Apache HttpClient / HttpCore | 5.6.4 / 5.4.4 |
 | Jackson 3 / Jackson 2 | 3.2.3 / 2.22.3 |
 | Logback / Log4j / SLF4J / SnakeYAML | 1.6.5 / 2.26.1 / 2.0.20 / 2.7 |
 | JUnit / Mockito / Byte Buddy / XMLUnit | 6.1.3 / 5.24.0 / 1.18.14 / 2.14.0 |
@@ -48,7 +49,7 @@ Für diesen Stand war `mvn --strict-checksums clean verify` mit JDK 27 erfolgrei
 - Bereinigt Suchbegriffe für BoardGameGeek und brettspiel-angebote.de: führende und folgende Leerzeichen, Klammerzusätze mit Wörtern sowie die Begriffe „Stapelspiel“, „Würfelspiel“ und „Jubiläumsausgabe“ werden entfernt.
 - Für brettspiel-angebote.de werden alle Klammerzusätze einschließlich der Klammern entfernt, auch rein numerische und verschachtelte Zusätze. Aus „Die Glasstraße (German first edition)“ wird der Suchbegriff „Die Glasstraße“.
 - Überspringt BoardGameGeek und den Preisvergleich vollständig, wenn der Angebotsname „Bundle“ enthält.
-- Prüft bei vorhandener BoardGameGeek-ID, dass die von der Preisvergleichssuche gelieferte Detailseite zum selben Spiel gehört.
+- Übergibt eine vorhandene BoardGameGeek-ID an den Preisservice und übernimmt Preise nur bei bestätigter gleicher ID.
 - Speichert neue Angebote und Preisänderungen mit einer kompakten Vorschau sowie dem damaligen Suchstatus bei brettspiel-angebote.de und BoardGameGeek im Activity Log.
 - Versucht die Recherche je Dienst höchstens dreimal mit drei Minuten Abstand, auch bei fehlenden Treffern oder fehlendem Bestpreis. Suchverlauf und nächste Fälligkeit werden dauerhaft gespeichert; nach Abschluss wird auch ohne Bestpreis gemeldet.
 - Protokolliert erfolgreiche und fehlgeschlagene Telegram-Sendeversuche ohne Nachrichteninhalt, Bot-Token oder Chat-ID.
@@ -58,15 +59,14 @@ Für diesen Stand war `mvn --strict-checksums clean verify` mit JDK 27 erfolgrei
 - Verhindert mit einem Fingerabdruck aus Quelle, URL und Preis doppelte Meldungen.
 - Aktualisiert alle Quellen alle fünf Minuten.
 - Sendet sonntags um 18:00 Uhr (Europe/Berlin) einen kompakten Wochenreport mit neuen Angeboten/Beiträgen, davon versendeten und wegen der Bestpreisgrenze zurückgehaltenen Angeboten sowie deren verlinkten Namen.
-- Ruft beim Anwendungsstart jede aktivierte Quelle und die „Scythe“-Preissuche auf brettspiel-angebote.de testweise vollständig ab, ohne Ergebnisse zu speichern, und meldet Trefferzahlen, Fehler sowie die kurze Commit-ID per Telegram oder im Anwendungslog.
+- Ruft beim Anwendungsstart jede aktivierte Quelle und die „Scythe“-Preissuche über den Preisservice testweise ab, ohne Ergebnisse zu speichern, und meldet Trefferzahlen, Fehler sowie die kurze Commit-ID per Telegram oder im Anwendungslog.
 - Sortiert die Angebotsübersicht absteigend nach der letzten inhaltlichen Aktualisierung.
 - Durchsucht über „Titel suchen“ alle gespeicherten Angebots- und Forumstitel nach Teilbegriffen, unabhängig von Groß- und Kleinschreibung. Die Suche lässt sich mit dem Quellenfilter kombinieren und bleibt beim Seitenwechsel erhalten. „Suche zurücksetzen“ entfernt den Suchbegriff und behält die gewählte Quelle bei. Leere Suchbegriffe zeigen wieder alle Angebote der gewählten Quelle.
 - Überwacht, wann pro aktiver Quelle zuletzt ein neuer Datensatz gespeichert wurde. Nach vier Tagen ohne neue Daten von Spiele-Offensive, Milan-Spiele oder dem BGG Market beziehungsweise nach 30 Tagen bei unknowns.de wird genau eine Warnung gesendet. Ein späterer neuer Datensatz aktiviert die Warnung für die nächste Ruhephase erneut.
-- Ruft die Suche von brettspiel-angebote.de unter `/suche/?s=Suchbegriff` auf und lädt danach gezielt die im `Location`-Header genannte Detailseite.
-- Ruft vor der ersten Suche die Startseite von brettspiel-angebote.de über Springs `RestClient` auf. Alle gesetzten Cookies, insbesondere `bunny_shield*`, bleiben im gemeinsamen Cookie-Speicher und werden bei Suche und Detailseite automatisch mitgesendet.
-- Protokolliert jeden HTTP-Aufruf des Preisvergleichs auf `DEBUG`: Schritt, Versuch, Methode, URL, bevorzugtes HTTP-Protokoll, Request- und Response-Header, `Location`, Laufzeit, Status, Antwortgröße sowie die vor und nach dem Aufruf gespeicherten Cookies. Fehler bleiben auf `WARN` sichtbar und enthalten zusätzlich den antwortenden Server und den Seitentitel.
-- Prüft täglich um 08:00 Uhr Europe/Berlin mit „Scythe“, ob brettspiel-angebote.de weiterhin auswertbar ist.
-- Prüft im selben täglichen Lauf mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können. Nach einem fehlgeschlagenen Test wird beim ersten wieder erfolgreichen Lauf einmalig eine Entwarnung gesendet; weitere erfolgreiche Läufe bleiben still, bis erneut ein Fehler auftritt.
+- Fragt Vergleichspreis und historischen Bestpreis über die JSON-API des separaten Preisservices ab; Standardadresse ist `http://localhost:8077`.
+- Überlässt dem Preisservice den Website-Abruf, die Suche, Identitätsprüfung, HTML-Auswertung und dessen Cache-Fallback.
+- Protokolliert API-Adresse, HTTP-Status und Versuch auf `DEBUG`; technische Fehler bleiben auf `WARN` sichtbar.
+- Prüft täglich um 08:00 Uhr Europe/Berlin mit „Magical Athlete“, ob Daten von BoardGameGeek abgefragt werden können. Nach einem fehlgeschlagenen Test wird beim ersten wieder erfolgreichen Lauf einmalig eine Entwarnung gesendet; weitere erfolgreiche Läufe bleiben still, bis erneut ein Fehler auftritt.
 
 ## Voraussetzungen
 
@@ -74,7 +74,7 @@ Für diesen Stand war `mvn --strict-checksums clean verify` mit JDK 27 erfolgrei
 - Maven 3.9 oder neuer
 - Optional: Telegram-Bot und Chat-ID
 - Optional, aber für BGG-Daten erforderlich: persönlicher BGG-API-Token
-- Für den Preisvergleich: funktionierender Internetzugang mit einer von brettspiel-angebote.de akzeptierten Quelladresse. Für den Raspberry Pi ist der Zugriff über temporäre öffentliche IPv6-Adressen bestätigt; die Docker-Konfiguration übernimmt dafür das Host-Netzwerk.
+- Für den Preisvergleich: erreichbarer [brettspielpreise-Service](https://github.com/jensGiehl/brettspielpreise), standardmäßig unter `http://localhost:8077`. Der Service benötigt den Website-Zugriff und übernimmt die Browser- und Netzwerkkonfiguration.
 
 ## Lokal starten
 
@@ -117,6 +117,12 @@ Die wichtigsten Einstellungen können als Umgebungsvariablen gesetzt werden:
 | `DB_USER` | H2-Benutzer | `sa` |
 | `DB_PASSWORD` | H2-Passwort | leer |
 | `SERVER_PORT` | HTTP-Port der Anwendung | `8080` |
+| `PRICE_COMPARISON_URL` | Basis-URL des separaten Preisservices (`offers.sources.price-comparison`) | `http://localhost:8077` |
+| `PRICE_COMPARISON_TIMEOUT` | Antwort-Timeout der Preisservice-API (`offers.http.price-comparison-timeout`) | `60s` |
+| `LOOKUP_RETRY_DELAY` | Abstand zwischen den gespeicherten Rechercheversuchen | `3m` |
+| `BG_PRICES_SOURCE_DIR` | Preisservice-Checkout für Docker Compose, einschließlich Dockerfile und Seccomp-Profil | `../brettspielpreise` |
+| `BG_PRICES_IMAGE` | Name des von Compose lokal gebauten Preisservice-Images | `bg-prices:local` |
+| `IPV6_PROXY_ENABLED` | Optionaler IPv6-Proxy im Preisservice-Container | `false` |
 | `PRICE_COMPARISON_LOG_LEVEL` | Gemeinsames Log-Level für das Preisvergleichsmodul | `INFO` |
 
 ### Telegram-Bot-Token und Chat-ID ermitteln
@@ -140,7 +146,7 @@ curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"
 
 Sie steht in der Antwort unter `result.id`. Der Bot-Token ist ein Zugangsschlüssel und darf weder in die Versionsverwaltung noch in Logs oder Screenshots gelangen. Falls er offengelegt wurde, kann er über BotFather widerrufen und neu erzeugt werden.
 
-Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Temporäre HTTP-Fehler werden standardmäßig bis zu dreimal mit 750 Millisekunden Pause versucht. Die übergeordnete Recherche bei BoardGameGeek und brettspiel-angebote.de umfasst unabhängig von den HTTP-Versuchen höchstens drei Versuche je Dienst. Technische Fehler, fehlende Treffer und ein fehlender Bestpreis werden mit jeweils drei Minuten Abstand erneut geprüft. Diese Pause lässt sich über `LOOKUP_RETRY_DELAY` anpassen, beispielsweise mit `LOOKUP_RETRY_DELAY=5m`. Ein separater Scheduler prüft alle 30 Sekunden auf fällige Recherchen, ohne den Import während der Wartezeit zu blockieren. Erfolgreiche Recherchen werden nicht wiederholt; beim Preisvergleich gilt ein Treffer ohne Bestpreis weiterhin als unvollständig. Nicht konfigurierte und ausdrücklich übersprungene Recherchen enden sofort. Nach Abschluss aller erforderlichen Versuche wird auch ohne Bestpreis gemeldet; bei bekanntem Bestpreis gelten die bestehenden Preisgrenzen. Fehlgeschlagene Zustellungen werden zeitversetzt erneut versucht. Suchversuche und Fälligkeiten überleben Neustarts. Eine Preisänderung beginnt einen neuen Suchverlauf. Bereits gespeicherte, noch ungemeldete Angebote mit unvollständiger Recherche werden beim Update ebenfalls eingeplant; frühere Suchversuche lassen sich nicht nachträglich rekonstruieren. Höchstens zwei Milan-Detailseiten werden gleichzeitig geladen. Die HTTP-Sitzung für brettspiel-angebote.de ist ausschließlich auf den konfigurierten Ursprung beschränkt und wird nicht zwischen Anwendungsstarts gespeichert.
+Die Quellen lassen sich außerdem direkt mit den Spring-Properties `offers.sources.spiele-offensive-enabled`, `offers.sources.milan-enabled`, `offers.sources.bgg-market-enabled` und `offers.sources.unknowns-enabled` einzeln ein- oder ausschalten. Alle vier sind standardmäßig aktiviert. Weitere Einstellungen wie Quell-URLs, Zeitpläne, HTTP-Timeout, Wiederholungsversuche und Parallelität der Milan-Detailabrufe befinden sich in `src/main/resources/application.yml` und können über die üblichen Spring-Boot-Konfigurationsmechanismen überschrieben werden. Temporäre HTTP-Fehler werden standardmäßig bis zu dreimal mit 750 Millisekunden Pause versucht. Die übergeordnete Recherche bei BoardGameGeek und brettspiel-angebote.de umfasst unabhängig von den HTTP-Versuchen höchstens drei Versuche je Dienst. Technische Fehler, fehlende Treffer und ein fehlender Bestpreis werden mit jeweils drei Minuten Abstand erneut geprüft. Diese Pause lässt sich über `LOOKUP_RETRY_DELAY` anpassen, beispielsweise mit `LOOKUP_RETRY_DELAY=5m`. Ein separater Scheduler prüft alle 30 Sekunden auf fällige Recherchen, ohne den Import während der Wartezeit zu blockieren. Erfolgreiche Recherchen werden nicht wiederholt; beim Preisvergleich gilt ein Treffer ohne Bestpreis weiterhin als unvollständig. Nicht konfigurierte und ausdrücklich übersprungene Recherchen enden sofort. Nach Abschluss aller erforderlichen Versuche wird auch ohne Bestpreis gemeldet; bei bekanntem Bestpreis gelten die bestehenden Preisgrenzen. Fehlgeschlagene Zustellungen werden zeitversetzt erneut versucht. Suchversuche und Fälligkeiten überleben Neustarts. Eine Preisänderung beginnt einen neuen Suchverlauf. Bereits gespeicherte, noch ungemeldete Angebote mit unvollständiger Recherche werden beim Update ebenfalls eingeplant; frühere Suchversuche lassen sich nicht nachträglich rekonstruieren. Höchstens zwei Milan-Detailseiten werden gleichzeitig geladen. Die HTTP-Retries gelten auch für den Preisservice: Netzwerkfehler, HTTP 429 und HTTP 5xx werden erneut versucht; HTTP 4xx außer 429 und Weiterleitungen enden sofort als Fehler. Der separate API-Antwort-Timeout beträgt 60 Sekunden, damit die laut API möglichen 45 Sekunden einschließlich Queue abgedeckt sind. Die übrigen HTTP-Abrufe behalten ihren bisherigen Timeout.
 
 Das Schnäppchenforum von unknowns.de ist derzeit nur für angemeldete Benutzer erreichbar. Vor jedem Abruf meldet sich die Anwendung mit `UNKNOWNS_USERNAME` und `UNKNOWNS_PASSWORD` über das Login-Formular an. Die dabei gesetzten Session-Cookies werden ausschließlich im Arbeitsspeicher verwaltet und automatisch beim anschließenden Forenabruf mitgesendet. Die Zugangsdaten gehören nicht in die Versionsverwaltung oder in Logs. Wird die Quelle nicht benötigt, kann sie mit `UNKNOWNS_ENABLED=false` deaktiviert werden.
 
@@ -166,9 +172,9 @@ unknowns.de-Beiträge verwenden das [Forumslogo](https://unknowns.de/images/styl
 
 Eine Meldung gilt erst dann als versendet, wenn Telegram den Aufruf erfolgreich bestätigt hat. Fehlerhafte Sendeversuche, einschließlich fehlgeschlagener Bildabrufe oder Bildverarbeitung, werden deshalb beim nächsten relevanten Lauf erneut versucht. Ohne Telegram-Konfiguration gilt die Ausgabe im Log als erfolgreiche lokale Meldung; Bilder werden dabei nicht heruntergeladen oder verarbeitet.
 
-Direkt beim Start führt die Anwendung einen rein lesenden Systemcheck aus. Dafür ruft sie jeden aktivierten Scraper einmal vollständig auf und prüft, ob mindestens ein Ergebnis geliefert wird. Zusätzlich führt sie wie beim täglichen Health-Check die Suche nach „Scythe“ auf brettspiel-angebote.de aus und erwartet verfügbare Preisdaten. Die dabei gefundenen Angebote und Prüfergebnisse werden weder gespeichert noch angereichert oder als einzelne Angebote gemeldet. Nach Abschluss wird genau eine Statusmeldung mit einem Haken (✅) je erfolgreich geprüfter Quelle und für den erfolgreichen Preisvergleichstest, möglichen Fehlern und der siebenstelligen Commit-ID versendet. Ohne Telegram-Konfiguration erscheint dieselbe Meldung im Anwendungslog. Startbericht und Zustellung werden dauerhaft im Activity Log erfasst. Mit `STARTUP_SYSTEM_CHECK_ENABLED=false` entfallen die externen Prüfungen; der Start wird weiterhin mit Commit-ID und dem Hinweis „Systemcheck deaktiviert“ protokolliert und gemeldet.
+Direkt beim Start führt die Anwendung einen rein lesenden Systemcheck aus. Dafür ruft sie jeden aktivierten Scraper einmal vollständig auf und prüft, ob mindestens ein Ergebnis geliefert wird. Zusätzlich führt sie die Suche nach „Scythe“ über den Preisservice aus und erwartet verfügbare Preisdaten. Die dabei gefundenen Angebote und Prüfergebnisse werden weder gespeichert noch angereichert oder als einzelne Angebote gemeldet. Nach Abschluss wird genau eine Statusmeldung mit einem Haken (✅) je erfolgreich geprüfter Quelle und für den erfolgreichen Preisvergleichstest, möglichen Fehlern und der siebenstelligen Commit-ID versendet. Ohne Telegram-Konfiguration erscheint dieselbe Meldung im Anwendungslog. Startbericht und Zustellung werden dauerhaft im Activity Log erfasst. Mit `STARTUP_SYSTEM_CHECK_ENABLED=false` entfallen die externen Prüfungen; der Start wird weiterhin mit Commit-ID und dem Hinweis „Systemcheck deaktiviert“ protokolliert und gemeldet.
 
-Die täglichen Health-Checks melden fehlgeschlagene Zugriffe auf brettspiel-angebote.de und BoardGameGeek. Sobald ein betroffener Test wieder erfolgreich ist, folgt genau eine Telegram-Entwarnung. Bleibt der Test erfolgreich, werden keine weiteren Entwarnungen gesendet. Dieser Zustand wird dauerhaft in der Datenbank gespeichert und überlebt Anwendungsneustarts. Schlägt die Zustellung der Entwarnung fehl, wird sie beim nächsten erfolgreichen Lauf erneut versucht. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
+Der tägliche externe Health-Check prüft nur BoardGameGeek. Der Preisservice wird ausschließlich beim Anwendungsstart mit „Scythe“ geprüft; eine tägliche Preisservice-Abfrage samt Warnung und Entwarnung entfällt. Sobald ein betroffener Test wieder erfolgreich ist, folgt genau eine Telegram-Entwarnung. Bleibt der Test erfolgreich, werden keine weiteren Entwarnungen gesendet. Dieser Zustand wird dauerhaft in der Datenbank gespeichert und überlebt Anwendungsneustarts. Schlägt die Zustellung der Entwarnung fehl, wird sie beim nächsten erfolgreichen Lauf erneut versucht. Die Ruhezeit-Überwachung berücksichtigt nur aktivierte Scraper und wertet einen erstmals gespeicherten Eintrag als neue Daten. Ihr Alarmzustand liegt dauerhaft in der Datenbank: Während derselben Ruhephase wird nur einmal gewarnt, nach einem neuen Datensatz kann eine spätere Ruhephase erneut eine Warnung auslösen.
 
 ## Versandentscheidungen und Fehler
 
@@ -205,42 +211,134 @@ Die Namen sind in Telegram direkt mit dem jeweiligen Angebot verlinkt. Der Zeitp
 
 Das Image unterstützt `linux/amd64` und `linux/arm64`, einschließlich 64-Bit-Raspberry-Pi-Systemen. Es läuft mit Java 27 und als Benutzer `app` mit UID/GID `10001`. Der Build verwendet `maven:3.10.0-eclipse-temurin-27`, die Laufzeit `eclipse-temurin:27-jre`. Der GitHub-Workflow baut beide Architekturen einschließlich der Tests und veröffentlicht sie unter `ghcr.io/jensgiehl/bg-offers:latest`. Anschließend prüft er für beide Architekturen den Containerstart mit Host-Netzwerk auf Port 8089, die Web-Oberfläche und das Anlegen der Datenbank in einem eingebundenen Ordner; externe Abrufe sind für diese Prüfung deaktiviert.
 
-### Raspberry Pi mit funktionierendem IPv6-Zugriff
+### Docker und Compose auf dem Raspberry Pi installieren
 
-Auf dem untersuchten Pi funktioniert der vollständige Preisvergleich über eine temporäre öffentliche IPv6-Adresse. Der Container verwendet deshalb das **Host-Netzwerk** des Linux-Pi. Damit stehen dieselben IPv6-Adressen, Routen und die auf dem Host konfigurierte Quelladresswahl zur Verfügung. Ein gewöhnliches Docker-Bridge-Netzwerk übernimmt diese Einstellung nicht automatisch. Die [Docker-Dokumentation zum Host-Netzwerk](https://docs.docker.com/engine/network/drivers/host/) beschreibt diesen Modus.
+Die Anleitung gilt für **Raspberry Pi OS mit 64 Bit** auf Basis von Debian Bookworm oder Trixie. `dpkg --print-architecture` muss `arm64` anzeigen. Docker verweist für [64-Bit-Raspberry-Pi-OS](https://docs.docker.com/engine/install/raspberry-pi-os/) auf seine [Debian-Installationsanleitung](https://docs.docker.com/engine/install/debian/).
 
-Die erfolgreiche Einstellung bleibt auf dem **Pi-Host** in `/etc/sysctl.d/99-bg-offers-ipv6-privacy.conf` gespeichert:
-
-```ini
-net.ipv6.conf.wlan0.use_tempaddr = 2
-```
-
-Der Container benötigt dafür keine zusätzlichen Rechte und keine eigenen Netzwerk-Sysctls. Die konkrete temporäre IP wird nicht festgeschrieben. Die Einstellung gilt für `wlan0`; bei einer anderen Netzwerkschnittstelle muss deren Name verwendet werden. Details zu temporären Adressen beschreibt die [Linux-Dokumentation](https://docs.kernel.org/networking/ip-sysctl.html).
-
-Im Projektverzeichnis die Konfiguration und den Datenbankordner vorbereiten:
+Wenn Docker Engine aus dem offiziellen Docker-Paketrepository bereits installiert ist, Compose und die Hilfswerkzeuge ergänzen:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y docker-compose-plugin git curl
+docker compose version
+```
+
+Für eine neue Installation zunächst das Docker-Paketrepository einrichten und danach Engine, Buildx und das [Compose-Plugin](https://docs.docker.com/compose/install/linux/) installieren:
+
+```bash
+dpkg --print-architecture
+. /etc/os-release
+printf '%s\n' "$VERSION_CODENAME"
+
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl --fail --silent --show-error --location \
+  https://download.docker.com/linux/debian/gpg \
+  --output /etc/apt/keyrings/docker.asc
+sudo chmod 0644 /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $VERSION_CODENAME
+Components: stable
+Architectures: arm64
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo docker run --rm hello-world
+sudo docker compose version
+```
+
+Bei einer vorhandenen Installation aus anderen Paketquellen zuerst die Hinweise zu kollidierenden Paketen in der Docker-Installationsanleitung beachten. Die folgenden Beispiele verwenden `docker` ohne `sudo`. Falls dafür noch die Berechtigung fehlt:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+Danach die SSH-Sitzung beenden und neu anmelden. Alternativ sämtliche Docker-Befehle mit `sudo` ausführen. Die Docker-Gruppe gewährt administrative Rechte auf dem Host.
+
+### Beide Services mit Docker Compose starten
+
+`compose.yaml` startet **BG Offers** und den Preisservice aus [jensGiehl/brettspielpreise](https://github.com/jensGiehl/brettspielpreise). Das Preisservice-Projekt hat laut seiner Dokumentation noch kein veröffentlichtes Registry-Image; Compose baut daher `bg-prices:local` aus einem benachbarten Checkout. BG Offers wird aus `ghcr.io/jensgiehl/bg-offers:latest` geladen. Für diese Einrichtung ist kein lokal installiertes Java oder Maven erforderlich.
+
+Auf dem Pi beide Repositories nebeneinander ablegen:
+
+```bash
+mkdir -p "$HOME/brettspiele"
+cd "$HOME/brettspiele"
+git clone https://github.com/jensGiehl/bg-offers.git
+git clone https://github.com/jensGiehl/brettspielpreise.git
+cd bg-offers
+
 if [ ! -f .env ]; then cp .env.example .env; fi
 chmod 600 .env
-mkdir -p data
-sudo chown -R 10001:10001 data
-sudo chmod -R u+rwX data
+mkdir -p data price-data
+sudo chown -R 10001:10001 data price-data
+sudo chmod -R u+rwX data price-data
 ```
 
-In `.env` bei Bedarf `BGG_API_TOKEN`, `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` eintragen. unknowns.de bleibt in der Vorlage deaktiviert; zum Aktivieren `UNKNOWNS_ENABLED=true` sowie Benutzername und Passwort setzen. `.env` wird von Git und vom Docker-Build ausgeschlossen. Der Container bindet `./data` unter `/app/data` ein, sodass die H2-Datenbank beim Ersetzen des Containers erhalten bleibt. Liegen die bisherigen Daten in einem anderen Verzeichnis, muss der Bind-Mount entsprechend angepasst werden. Eine vorhandene Java-Instanz vor dem Containerstart beenden, damit die Datenbank nur von einem Prozess geöffnet wird.
+Bei vorhandenen Checkouts direkt in das BG-Offers-Verzeichnis wechseln. In `.env` bei Bedarf `BGG_API_TOKEN`, `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` eintragen. unknowns.de ist in der Vorlage deaktiviert; zum Aktivieren `UNKNOWNS_ENABLED=true` und die Zugangsdaten setzen. Bereits vorhandene `.env`-Dateien bleiben erhalten. Liegt brettspielpreise anderswo, `BG_PRICES_SOURCE_DIR` auf dessen Verzeichnis setzen; standardmäßig ist es `../brettspielpreise`. `PRICE_COMPARISON_URL` muss für diese Konfiguration `http://localhost:8077` lauten.
 
-Mit Docker Compose v2 oder neuer starten:
+Beide Container laufen mit dem **Host-Netzwerk** von Docker Engine auf Linux. So nutzt auch der Browser des Preisservices die Netzwerkkonfiguration des Pi. Das Seccomp-Profil für die Chromium-Sandbox wird aus `brettspielpreise/docker/seccomp_profile.json` übernommen. Unprivilegierte User-Namespaces müssen auf dem Host verfügbar sein. Weitere Browser- und IPv6-Einstellungen beschreibt die [Preisservice-README](https://github.com/jensGiehl/brettspielpreise#ipv6-quelladresse-und-browserdiagnose); dessen optionaler IPv6-Proxy lässt sich in `.env` mit `IPV6_PROXY_ENABLED=true` aktivieren.
+
+| Service | Port am Host | Datenverzeichnis auf dem Host | Pfad im Container |
+|---|---|---|---|
+| BG Offers (`bg-offers`) | `8089` | `./data` | `/app/data/bg-offers` |
+| Preisservice (`bg-prices`) | `8077` | `./price-data` | `/app/data/bg-prices` |
+
+**8089 ist der Port am Host** für die Angebotsoberfläche. Im Host-Netzwerk lauscht die Anwendung selbst auf 8089; es gibt keine Portweiterleitung. Für die Preisservice-API gilt entsprechend 8077. Beide Ports müssen frei sein. Die H2-Datenbanken liegen in getrennten Bind-Mounts und bleiben bei Containerwechseln erhalten. `.env`, `data` und `price-data` sind von Git und dem BG-Offers-Image-Build ausgeschlossen. Frühere Java- oder Docker-Instanzen vor dem Wechsel stoppen, damit Port und Datenbank nur von einem Prozess genutzt werden.
+
+Beim Umstieg von manuell gestarteten Containern deren Namen vor dem ersten Compose-Start freigeben (die eingebundenen Datenverzeichnisse bleiben erhalten):
 
 ```bash
-docker compose pull
-docker rm -f bg-offers 2>/dev/null
-docker compose up -d
-docker compose logs --tail=100 -f bg-offers
+docker stop --time 65 bg-offers bg-prices 2>/dev/null || true
+docker rm bg-offers bg-prices 2>/dev/null || true
 ```
 
-Die Compose-Datei verwendet `network_mode: host`, `restart: unless-stopped` und standardmäßig `SERVER_PORT=8089`. **8089 ist der Port am Host.** Da der Container das Host-Netzwerk verwendet, lauscht die Anwendung selbst auf Port 8089; es gibt hier keine Portweiterleitung. Port 8089 muss frei sein. Die Oberfläche ist im Heimnetz unter `http://<PI-IP>:8089` erreichbar. Der beim Start ausgeführte Systemcheck prüft auch den vollständigen Scythe-Preisvergleich; dessen Ergebnis erscheint in der Statusmeldung beziehungsweise ohne Telegram-Konfiguration im Anwendungslog.
+Im BG-Offers-Verzeichnis bauen und starten:
 
-Alternativ derselbe Start ohne Compose, mit der vorbereiteten `.env`:
+```bash
+docker compose config --quiet
+docker compose pull bg-offers
+docker compose build --pull bg-prices
+docker compose up -d --no-build
+docker compose ps
+docker compose logs --tail=100 -f bg-prices bg-offers
+```
+
+Der erste Preisservice-Build lädt JDK, Maven-Abhängigkeiten und das Playwright-Image und führt die Tests des Preisservice-Projekts aus; auf dem Pi kann das dauern. Der Preisservice erhält 1,5 GiB RAM-Limit, zwei CPUs und 256 MiB Shared Memory. Für beide Services und den Build entsprechend freien Arbeitsspeicher vorsehen.
+
+Compose startet BG Offers erst, wenn `/actuator/health/readiness` des Preisservices erfolgreich ist. Die Bereitschaftsprüfung prüft die lokale API; sie ersetzt keine erfolgreiche Preisrecherche. Beim Start von BG Offers bleibt der „Scythe“-Systemcheck über die API aktiv. Der tägliche Scythe-Test ist in beiden Anwendungen deaktiviert; die täglichen BoardGameGeek- und Scraper-Prüfungen von BG Offers bleiben erhalten.
+
+Die Oberfläche ist unter `http://<PI-IP>:8089` erreichbar. Die Preisservice-API lässt sich auf dem Pi prüfen:
+
+```bash
+curl --fail http://localhost:8077/actuator/health/readiness
+curl -G http://localhost:8077/api/v1/prices \
+  --data-urlencode 'name=Scythe' --data-urlencode 'bggId=169786'
+```
+
+Updates aus dem BG-Offers-Verzeichnis:
+
+```bash
+git pull --ff-only
+git -C ../brettspielpreise pull --ff-only
+docker compose pull bg-offers
+docker compose build --pull bg-prices
+docker compose up -d --no-build
+```
+
+Bei abweichendem `BG_PRICES_SOURCE_DIR` den Pfad im zweiten Befehl entsprechend anpassen. Den Preisservice stets neu bauen, wenn dessen Checkout aktualisiert wurde. `docker compose pull` allein aktualisiert das lokal gebaute Preisservice-Image nicht. `docker compose down` beendet beide Container; die Datenverzeichnisse bleiben erhalten. Vor einem Backup mit `docker compose stop` beide Services anhalten und `data` sowie `price-data` sichern. Nach einem Host-Neustart starten beide Container durch `restart: unless-stopped` wieder, sofern Docker aktiviert ist. Die `depends_on`-Bereitschaftsprüfung gilt beim Compose-Start, nicht für die automatische Startreihenfolge des Docker-Daemons.
+
+### Nur BG Offers manuell starten
+
+Wenn der Preisservice bereits unter `http://localhost:8077` läuft, kann BG Offers alternativ ohne Compose gestartet werden. Dieser Befehl ersetzt den BG-Offers-Container und verwendet die vorbereitete `.env` und Datenbank:
 
 ```bash
 docker rm -f bg-offers 2>/dev/null
@@ -258,7 +356,7 @@ docker run -d \
   ghcr.io/jensgiehl/bg-offers:latest
 ```
 
-Bei Updates `docker compose pull` und anschließend `docker compose up -d` ausführen. Nach einem Host-Neustart läuft der Container automatisch wieder an, sofern der Docker-Dienst beim Systemstart aktiviert ist. Für diesen Zugriffspfad wird Docker Engine auf Linux mit normalem Host-Netzwerk vorausgesetzt. Docker Desktop und Rootless-Docker verwenden andere Netzwerktechnik; dort muss der tatsächliche IPv6-Ausgang separat geprüft werden.
+Auch hier ist **8089 der Port am Host**. Für Docker Desktop oder ein Bridge-Netzwerk folgt weiter unten ein Beispiel mit `-p 8089:8080`.
 
 ### Zugriffsfehler auf `/app/data` beheben
 
@@ -300,7 +398,7 @@ Maven fragt zuerst Maven Central und anschließend JitPack ab, das für `bggClie
 
 ### Betrieb mit einem eigenen Docker-Netzwerk
 
-Wenn ein Docker-Netzwerk bereits einen geeigneten IPv6-Internetzugang besitzt, kann weiterhin ein klassischer Start mit Portweiterleitung verwendet werden. Das folgende Beispiel setzt diesen Zugang voraus und ist nicht die empfohlene Pi-Konfiguration:
+Für einen Preisservice auf dem Docker-Host und BG Offers im Bridge-Netzwerk kann folgender Start verwendet werden. Der Service muss auf einer für den Container erreichbaren Host-Adresse lauschen:
 
 ```bash
 docker rm -f bg-offers 2>/dev/null
@@ -311,14 +409,16 @@ docker run -d \
   --init \
   --restart unless-stopped \
   -p 8089:8080 \
+  --add-host host.docker.internal:host-gateway \
   --env-file .env \
+  -e PRICE_COMPARISON_URL=http://host.docker.internal:8077 \
   -e SERVER_PORT=8080 \
   -e DB_PATH=/app/data/bg-offers \
   --mount "type=bind,source=$(pwd)/data,target=/app/data" \
   ghcr.io/jensgiehl/bg-offers:latest
 ```
 
-Hier ist **8089 der Port am Host**, während die Anwendung im Container auf 8080 läuft. Docker-Bridge-Netzwerke benötigen eine passende IPv6-Konfiguration und Route; die bloße IPv6-Verfügbarkeit auf dem Host reicht nicht aus. Wird ein eigenes Netzwerk benötigt, kann es über `--network NETZWERKNAME` angegeben werden. Details beschreibt die [Docker-Dokumentation zu Bridge-Netzwerken](https://docs.docker.com/engine/network/drivers/bridge/).
+Hier ist **8089 der Port am Host**, während die Anwendung im Container auf 8080 läuft. `./data` wird unter `/app/data` eingebunden und erhält die H2-Datenbank über Containerwechsel hinweg. `localhost` bezeichnet im Bridge-Netzwerk den BG-Offers-Container selbst; deshalb wird die Preisservice-URL im Beispiel auf `host.docker.internal` gesetzt. Laufen beide Dienste in einem gemeinsamen Docker-Netzwerk, stattdessen beispielsweise `--network brettspiele` und `PRICE_COMPARISON_URL=http://brettspielpreise:8077` verwenden (Dienstname und internen Service-Port anpassen). Details beschreibt die [Docker-Dokumentation zu Bridge-Netzwerken](https://docs.docker.com/engine/network/drivers/bridge/).
 
 ## Tests
 
@@ -326,7 +426,7 @@ Hier ist **8089 der Port am Host**, während die Anwendung im Container auf 8080
 mvn test
 ```
 
-Der echte Live-Test sucht „Scythe“ direkt auf brettspiel-angebote.de und erwartet einen positiven verfügbaren Preis. Er ist standardmäßig deaktiviert, damit ein externer Ausfall den normalen Build nicht fehlschlagen lässt:
+Der echte Live-Test sucht „Scythe“ über den separat laufenden Preisservice und erwartet einen positiven verfügbaren Preis. Die Basis-URL wird auch hier über `PRICE_COMPARISON_URL` gesetzt (Standard `http://localhost:8077`). Er ist standardmäßig deaktiviert, damit ein externer Ausfall den normalen Build nicht fehlschlagen lässt:
 
 ```bash
 RUN_LIVE_PRICE_COMPARISON_TEST=true mvn -Dtest=PriceComparisonLiveTest test
@@ -340,22 +440,16 @@ mvn -Dtest=PriceComparisonLiveTest test
 Remove-Item Env:RUN_LIVE_PRICE_COMPARISON_TEST
 ```
 
-Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Systemcheck mit Erfolgs-, Leer- und Fehlerfällen und dauerhaftem Startbericht, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Market-Preisprüfung bei bekanntem Bestpreis und den Versand ohne Bestpreis, den unknowns.de-Parser, Quellen-Badges, SVG-Logo-Konvertierung einschließlich leerer Inkscape-Fließtexte, PNG-Foto-Uploads mit UTF-8-Beschriftung und Bildfehlern, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, die täglichen externen Health-Checks mit einmaliger Entwarnung nach einer Erholung, den vollständigen Preisvergleichsablauf aus Startseite, Suche und Weiterleitungsziel, die Cookie-Weitergabe einschließlich `bunny_shield*`, die Kontrolle der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
+Die Tests prüfen unter anderem alle vier Quellen, den rein lesenden Start-Systemcheck mit Erfolgs-, Leer- und Fehlerfällen und dauerhaftem Startbericht, die BGG-Market-Feldzuordnung und Deduplizierung über `productid`, den direkten Einsatz von `objectid`, die Market-Preisprüfung bei bekanntem Bestpreis und den Versand ohne Bestpreis, den unknowns.de-Parser, Quellen-Badges, SVG-Logo-Konvertierung einschließlich leerer Inkscape-Fließtexte, PNG-Foto-Uploads mit UTF-8-Beschriftung und Bildfehlern, Gruppendeal-Mengen, Spieleschmiede-Filterung, Milan-Bildauswahl, HTTP- und Recherche-Wiederholungen, Namensnormalisierung, Bundle-Ausschluss, die Benachrichtigungsunterdrückung beim Initialimport, Telegram-Nachrichten ohne leere Werte, die einmaligen und erneut aktivierbaren Scraper-Health-Warnungen, den täglichen BoardGameGeek-Health-Check mit einmaliger Entwarnung nach einer Erholung, die Preisservice-API mit UTF-8-Suchparametern und optionaler BoardGameGeek-ID, Live- und Cache-Antworten, Teilresultate, alle API-Statuswerte, HTTP- und Timeout-Retries, die Kontrolle der BoardGameGeek-ID, Vergleichspreise sowie die Darstellung des Activity Logs und der Übersicht fehlender Treffer.
 
-## Hinweise zu externen Seiten
+## Preisservice-API
 
-### IPv6-Quelladresse und HTTP 403
+Der Vertrag ist in der [OpenAPI-Datei von brettspielpreise](https://github.com/jensGiehl/brettspielpreise/blob/master/src/main/resources/openapi.yaml) beschrieben. BG Offers ruft ausschließlich `GET /api/v1/prices?name=Suchbegriff` auf, mit zusätzlichem `bggId`, sofern bekannt. Suchbegriffe werden wie bisher bereinigt und als UTF-8-Queryparameter codiert. Bundle-Angebote ohne BGG-ID werden weiterhin übersprungen. Abruf und Parsen der Website finden vollständig im Preisservice statt.
 
-Auf dem Raspberry Pi zeigte ein Vergleich mit identischen curl-Anfragen und derselben Zieladresse: ursprüngliche IPv6-Quelladresse HTTP 403, zusätzliche zufällige IPv6-Quelladresse aus demselben `/64` HTTP 200, ursprüngliche Adresse erneut HTTP 403. Nach dem Aktivieren und Bevorzugen temporärer IPv6-Adressen war auch der vollständige Java-Preisvergleich mit Zulu `27+35` erfolgreich. Die vier Antworten lieferten HTTP 200, 302, 200 und 200; Scythe wurde mit verfügbarem Preis gefunden. Der Benutzer bestätigte anschließend auch den Erfolg nach dem Speichern der Einstellung.
+Die JSON-Statuswerte `FOUND`, `NOT_FOUND`, `SKIPPED` und `ERROR` werden auf die vorhandenen Recherche-Statuswerte abgebildet. Bei `FOUND` werden `url`, `availablePrice` und `bestPrice` übernommen, auch bei Teilresultaten oder einem vom Service gelieferten Cache-Fallback. Der Service prüft dessen Gültigkeit; laut API ist ein Fallback bis einen Kalendermonat nach `fetchedAt` gültig. Cache-Preise sind historische Snapshots und bestätigen keine aktuelle Verfügbarkeit. Ein historischer Bestpreis ohne verfügbaren Preis bleibt nutzbar; ein Treffer ohne Bestpreis bleibt wie bisher für weitere Rechercheversuche offen. Nicht-EUR-Preise, negative Preise und eine fehlende oder abweichende `matchedBggId` bei angeforderter ID werden als technische Fehler behandelt.
 
-Damit ist der Einfluss der Quelladresse für diese Versuche belegt. Welche Schutzregel auf der Seite dafür verantwortlich war, bleibt unbekannt. Für den Docker-Betrieb auf diesem Pi wird die funktionierende Host-Konfiguration wie oben beschrieben verwendet.
+Der Startup-Systemcheck sucht weiterhin nach „Scythe“ über dieselbe API. Er prüft, ob der Service verfügbare Preisdaten liefert; ein gültiger Cache-Fallback kann diese Prüfung ebenfalls erfüllen. Der tägliche Preisvergleichstest ist entfernt. Der tatsächliche Live-Quellstatus des Preisservices ist separat über dessen `GET /api/v1/source-status` abrufbar.
 
-### Zugriffspfad und Protokollierung
+Die bestehenden HTTP- und gespeicherten Recherche-Retries bleiben in BG Offers erhalten. Die vom Service gemeldeten Abkühlzeiten (`retryAt` beziehungsweise `Retry-After`) ersetzen den konfigurierten BG-Offers-Retry-Zeitplan nicht. Auch fehlerhafte oder nicht erreichbare Services enden nach den bestehenden Versuchsgrenzen; danach gelten unverändert die Benachrichtigungsregeln.
 
-Die Anwendung wertet die HTML-Detailseiten von brettspiel-angebote.de aus. Dafür gibt es genau eine Implementierung von `PriceComparisonClient`; sie kapselt den einzigen Zugriffspfad und verwendet Springs `RestClient` mit Apache HttpClient, konsistenten Browser- und Fetch-Headern sowie einem gemeinsamen Cookie-Speicher. Ein eigener DNS-Resolver bevorzugt für diesen Client IPv6 und behält IPv4 als Fallback. Das ist wichtig, weil der vorgeschaltete Schutzdienst einen Zugriff über IPv4 mit HTTP 403 ablehnen kann, während derselbe Aufruf über IPv6 funktioniert. Die übrigen externen Clients der Anwendung werden von dieser Präferenz nicht beeinflusst. Der allgemeine `HttpDocumentClient` ist nicht Teil dieses Preisvergleichspfads und lehnt Aufrufe an den konfigurierten Preisvergleichs-Ursprung ausdrücklich ab. Zuerst wird die Startseite geladen, danach `/suche/?s=Suchbegriff` ohne automatische Weiterleitung aufgerufen und anschließend die URL aus dem `Location`-Header über HTTP/1.1 geladen. Handelt es sich dabei um eine Suchergebnisliste, wählt der Client den Eintrag mit der angeforderten BoardGameGeek-ID und lädt dessen Detailseite. Weiterleitungen und Treffer auf einem anderen Ursprung werden abgelehnt. `If-Modified-Since` wird bewusst nicht gesendet, damit der Client keine leere `304 Not Modified`-Antwort erhält. Jsoup verarbeitet anschließend ausschließlich die geladenen Inhalte und führt kein JavaScript aus. Verlangt ein vorgeschalteter Schutzdienst dennoch eine JavaScript-Prüfung, wird der Abruf als technischer Fehler protokolliert. Ändern die Betreiber Markup, Endpunkte oder Schutzmechanismen, können ebenfalls einzelne Abrufe fehlschlagen. Für brettspiel-angebote.de und BoardGameGeek gibt es zusätzlich tägliche Prüfungen mit Telegram-Warnung. Betreiberregeln und zulässige Abruffrequenzen sollten beim produktiven Einsatz beachtet werden.
-
-Vom betroffenen Rechner lässt sich die unterschiedliche Behandlung der Adressfamilien mit `curl -4` und `curl -6` prüfen. Liefert nur der IPv6-Aufruf HTTP 200, muss das Betriebssystem beziehungsweise das Container-Netzwerk über eine funktionsfähige öffentliche IPv6-Verbindung verfügen; die Anwendung kann fehlende IPv6-Konnektivität nicht durch die DNS-Sortierung ersetzen.
-
-Alle ausschließlich zum Preisvergleich gehörenden Bestandteile sind im Modul-Package `de.agiehl.bgoffers.pricecomparison` gebündelt: Service und Ergebnisobjekt, Client-Schnittstelle, Dokument-Client und interner HTTP-Client. Gemeinsam genutzte Bausteine wie die Namensnormalisierung bleiben in ihren bisherigen Packages. Die Logger behalten jeweils den vollständigen Klassennamen; dank des gemeinsamen Package-Präfixes lässt sich ihr Log-Level trotzdem zusammen steuern.
-
-Die detaillierten HTTP-Schritte des Preisvergleichs werden auf `DEBUG`-Ebene protokolliert. Dafür kann vorübergehend `PRICE_COMPARISON_LOG_LEVEL=DEBUG` gesetzt werden. Alternativ kann das Spring-Boot-Property `logging.level.de.agiehl.bgoffers.pricecomparison` verwendet werden. Ein Fehler bleibt auch auf `WARN` sichtbar und nennt unter anderem `Typ=Startseite`, `Typ=Suche` oder `Typ=Detailseite`. Das Debug-Log enthält vollständige Cookie-Werte, einschließlich `bunny_shield*`, und muss deshalb wie ein Geheimnis behandelt, nur kurzfristig aktiviert und vor einer Weitergabe bereinigt werden.
+Alle Bestandteile dieser Anbindung liegen im Package `de.agiehl.bgoffers.pricecomparison`. Mit `PRICE_COMPARISON_LOG_LEVEL=DEBUG` oder `logging.level.de.agiehl.bgoffers.pricecomparison` lassen sich API-Aufrufe und HTTP-Status detaillierter protokollieren.

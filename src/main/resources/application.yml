@@ -41,9 +41,10 @@ offers:
     unknowns-password: ${UNKNOWNS_PASSWORD:}
     bgg-market: "https://api.geekdo.com/api/market/products?ajax=1&browsetype=browse&colluserid=0&condition=new&country=DE&currency=eur&displaymode=gallery&findmywants=0&inventorytype=any&marketdomain=boardgame&nosession=1&objectid=0&objecttype=thing&pageid=1&productstate=active&shiparea=any&sort=recent&stock=instock&userid=0"
     bgg-market-enabled: ${BGG_MARKET_ENABLED:true}
-    price-comparison: https://www.brettspiel-angebote.de/
+    price-comparison: ${PRICE_COMPARISON_URL:http://localhost:8077}
   http:
     timeout: 30s
+    price-comparison-timeout: ${PRICE_COMPARISON_TIMEOUT:60s}
     user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36
     max-attempts: 3
     retry-delay: 750ms

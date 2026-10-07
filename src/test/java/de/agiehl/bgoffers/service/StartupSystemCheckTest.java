@@ -51,6 +51,7 @@ class StartupSystemCheckTest {
                 Commit: 0123456
                 unknowns.de: ✅
                 brettspiel-angebote.de: ✅""");
+        verify(priceComparison).healthCheck();
         assertThat(dryRunContext.active()).isFalse();
         verify(activityLog).recordApplicationStarted("""
                 Systemcheck erfolgreich

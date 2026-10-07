@@ -23,16 +23,6 @@ import static org.mockito.Mockito.verify;
 class HttpDocumentClientTest {
 
     @Test
-    void rejectsPriceComparisonRequestsOutsideTheDedicatedClient() {
-        var properties = TestProperties.create();
-        var client = new HttpDocumentClient(properties, mock(ActivityLogService.class));
-
-        assertThatThrownBy(() -> client.fetch(properties.sources().priceComparison()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("ausschließlich über PriceComparisonClient");
-    }
-
-    @Test
     void decodesHtmlWithTheCharsetFromTheContentTypeHeader() throws Exception {
         var server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/latin1/", exchange -> {

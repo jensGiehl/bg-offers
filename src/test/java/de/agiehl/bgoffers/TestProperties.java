@@ -24,7 +24,7 @@ public final class TestProperties {
                         "test-user",
                         "test-password",
                         URI.create("https://api.geekdo.com/api/market/products?pageid=1"),
-                        URI.create("https://www.brettspiel-angebote.de/")),
+                        URI.create("http://localhost:8077")),
                 new OfferProperties.Http(Duration.ofSeconds(5), "test", 3, Duration.ZERO, Duration.ZERO, 2),
                 new OfferProperties.Schedule(Duration.ZERO, Duration.ofMinutes(5), "0 0 8 * * *"),
                 new OfferProperties.SourceHealth(

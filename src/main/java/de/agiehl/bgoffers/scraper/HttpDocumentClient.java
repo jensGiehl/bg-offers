@@ -161,7 +161,6 @@ public class HttpDocumentClient implements SessionDocumentClient {
 
     private HttpResponse<byte[]> send(HttpRequest request) {
         var uri = request.uri();
-        rejectPriceComparisonOrigin(uri);
         IOException lastException = null;
         var attempts = Math.max(1, properties.http().maxAttempts());
         for (var attempt = 1; attempt <= attempts; attempt++) {
@@ -209,19 +208,6 @@ public class HttpDocumentClient implements SessionDocumentClient {
             throw new SourceAccessException(
                     "Login-Formular von %s verweist auf eine fremde Adresse".formatted(loginUri.getHost()));
         }
-    }
-
-    private void rejectPriceComparisonOrigin(URI uri) {
-        if (sameOrigin(properties.sources().priceComparison(), uri)) {
-            throw new IllegalArgumentException(
-                    "brettspiel-angebote.de darf ausschließlich über PriceComparisonClient aufgerufen werden");
-        }
-    }
-
-    private boolean sameOrigin(URI left, URI right) {
-        return left.getScheme().equalsIgnoreCase(right.getScheme())
-                && left.getHost().equalsIgnoreCase(right.getHost())
-                && effectivePort(left) == effectivePort(right);
     }
 
     private int effectivePort(URI uri) {
